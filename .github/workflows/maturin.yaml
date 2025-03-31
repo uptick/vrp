@@ -1,7 +1,10 @@
-name: Publish to PyPI
+name: Publish Release
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "*"
   release:
     types:
       - released
@@ -11,68 +14,108 @@ permissions:
   contents: write
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [x86_64, aarch64]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: ./vrp-cli
-          target: ${{ matrix.target }}
-          sccache: "true"
-          args: --release --out dist -m Cargo.toml -i 3.12
-          manylinux: auto
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.target }}
-          path: ./vrp-cli/dist
-  macos:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        target: [aarch64]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-          architecture: "arm64"
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: ./vrp-cli
-          target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
-          sccache: "true"
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-macos-${{ matrix.target }}
-          path: ./vrp-cli/dist
+  # linux:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       target: [x86_64, aarch64]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: "3.12"
+  #     - name: Build wheels
+  #       uses: PyO3/maturin-action@v1
+  #       with:
+  #         working-directory: ./vrp-cli
+  #         target: ${{ matrix.target }}
+  #         sccache: "true"
+  #         args: --release --out dist -m Cargo.toml -i 3.12
+  #         manylinux: auto
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: wheels-${{ matrix.target }}
+  #         path: ./vrp-cli/dist
+  # macos:
+  #   runs-on: macos-latest
+  #   strategy:
+  #     matrix:
+  #       target: [aarch64]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: "3.12"
+  #         architecture: "arm64"
+  #     - name: Build wheels
+  #       uses: PyO3/maturin-action@v1
+  #       with:
+  #         working-directory: ./vrp-cli
+  #         target: ${{ matrix.target }}
+  #         args: --release --out dist --find-interpreter
+  #         sccache: "true"
+  #     - name: Upload wheels
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: wheels-macos-${{ matrix.target }}
+  #         path: ./vrp-cli/dist
 
   gh-publish:
     name: Publish artifacts to GH
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    needs: [linux, macos]
+    # needs: [linux, macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      # - uses: actions/download-artifact@v4
+      #   with:
+      #     path: .
+      #     merge-multiple: true
+
+      # - name: Upload to GitHub
+      #   id: create-release
+      #   uses: softprops/action-gh-release@v2
+      #   with:
+      #     files: ./*
+
+      - uses: actions/checkout@v3
         with:
-          path: .
-          merge-multiple: true
-      - name: List artifacts
-        run: ls -lhs
-      - name: Upload to GitHub
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ./*
+          ref: gh-pages
+
+      - name: Generate PyPi index page
+        id: generate_index
+        shell: python
+        env:
+          ASSETS:
+            '[{"url":"https://api.github.com/repos/uptick/vrp/releases/assets/242416254","id":242416254,"node_id":"RA_kwDOORVv384Ocvp-","name":"vrp_cli-1.25.0-cp313-cp313-macosx_11_0_arm64.whl","label":"","content_type":"application/octet-stream","state":"uploaded","size":1635393,"download_count":0,"created_at":"2025-03-31T22:32:42Z","updated_at":"2025-03-31T22:32:42Z","browser_download_url":"https://github.com/uptick/vrp/releases/download/0.4/vrp_cli-1.25.0-cp313-cp313-macosx_11_0_arm64.whl"},{"url":"https://api.github.com/repos/uptick/vrp/releases/assets/242416253","id":242416253,"node_id":"RA_kwDOORVv384Ocvp9","name":"vrp_cli-1.25.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl","label":"","content_type":"application/octet-stream","state":"uploaded","size":1858782,"download_count":0,"created_at":"2025-03-31T22:32:42Z","updated_at":"2025-03-31T22:32:42Z","browser_download_url":"https://github.com/uptick/vrp/releases/download/0.4/vrp_cli-1.25.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"},{"url":"https://api.github.com/repos/uptick/vrp/releases/assets/242416251","id":242416251,"node_id":"RA_kwDOORVv384Ocvp7","name":"vrp_cli-1.25.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl","label":"","content_type":"application/octet-stream","state":"uploaded","size":1691303,"download_count":0,"created_at":"2025-03-31T22:32:42Z","updated_at":"2025-03-31T22:32:42Z","browser_download_url":"https://github.com/uptick/vrp/releases/download/0.4/vrp_cli-1.25.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"},{"url":"https://api.github.com/repos/uptick/vrp/releases/assets/242416250","id":242416250,"node_id":"RA_kwDOORVv384Ocvp6","name":"vrp_cli-1.25.0-cp312-cp312-macosx_11_0_arm64.whl","label":"","content_type":"application/octet-stream","state":"uploaded","size":1635392,"download_count":0,"created_at":"2025-03-31T22:32:42Z","updated_at":"2025-03-31T22:32:42Z","browser_download_url":"https://github.com/uptick/vrp/releases/download/0.4/vrp_cli-1.25.0-cp312-cp312-macosx_11_0_arm64.whl"},{"url":"https://api.github.com/repos/uptick/vrp/releases/assets/242416252","id":242416252,"node_id":"RA_kwDOORVv384Ocvp8","name":"vrp_cli-1.25.0-cp311-cp311-macosx_11_0_arm64.whl","label":"","content_type":"application/octet-stream","state":"uploaded","size":1636840,"download_count":0,"created_at":"2025-03-31T22:32:42Z","updated_at":"2025-03-31T22:32:42Z","browser_download_url":"https://github.com/uptick/vrp/releases/download/0.4/vrp_cli-1.25.0-cp311-cp311-macosx_11_0_arm64.whl"}]'
+            # ${{ steps.create-release.outputs.assets }}
+        run: |
+          import json
+          import os
+
+          # Load the assets data from the previous step
+          assets = json.loads(os.environ['ASSETS'])
+
+          # Define the header for the index.md file
+          index_content = "# vrp-cli\n\n"
+
+          # Iterate over the assets and format them into markdown links
+          for asset in assets:
+            name = asset['name']
+            url = asset['browser_download_url']
+            python_version = name.split('-')[2].split('cp3')[1]
+            index_content += f'<a href="{url}" data-requires-python="==3.{python_version}">{name}</a><br />\n'
+
+          # Write the content to the index.md file
+          with open('docs/vrp-cli/index.md', 'w') as f:
+            f.write(index_content)
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/vrp-cli/index.md
+          git commit -m 'docs: update PyPi index page'
+          git push
