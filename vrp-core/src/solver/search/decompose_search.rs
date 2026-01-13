@@ -90,11 +90,25 @@ impl DecomposeSearch {
             (refinement_ctx, route_indices)
         });
 
-        // merge evolution results into one insertion_ctx
-        let mut insertion_ctx = decomposed.into_iter().fold(
-            InsertionContext::new_empty(refinement_ctx.problem.clone(), refinement_ctx.environment.clone()),
-            |insertion_ctx, decomposed| merge_best(decomposed, original_insertion_ctx, insertion_ctx),
-        );
+        // get new and old parts and detect if there was any improvement in any part
+        let ((new_parts, old_parts), improvements): ((Vec<_>, Vec<_>), Vec<_>) =
+            decomposed.into_iter().map(|decomposed| get_solution_parts(decomposed, original_insertion_ctx)).unzip();
+
+        let has_improvements = improvements.iter().any(|is_improvement| *is_improvement);
+
+        let mut insertion_ctx = if has_improvements {
+            improvements.into_iter().zip(new_parts.into_iter().zip(old_parts.into_iter())).fold(
+                InsertionContext::new_empty(refinement_ctx.problem.clone(), refinement_ctx.environment.clone()),
+                |accumulated, (is_improvement, (new_part, old_part))| {
+                    merge_parts(if is_improvement { new_part } else { old_part }, accumulated)
+                },
+            )
+        } else {
+            new_parts.into_iter().fold(
+                InsertionContext::new_empty(refinement_ctx.problem.clone(), refinement_ctx.environment.clone()),
+                |accumulated, new_part| merge_parts(new_part, accumulated),
+            )
+        };
 
         insertion_ctx.restore();
         finalize_insertion_ctx(&mut insertion_ctx);
@@ -248,24 +262,23 @@ fn decompose_insertion_context(
         .and_then(|contexts| if contexts.len() > 1 { Some(contexts) } else { None })
 }
 
-fn merge_best(
+fn get_solution_parts(
     decomposed: (RefinementContext, HashSet<usize>),
     original_insertion_ctx: &InsertionContext,
-    accumulated: InsertionContext,
-) -> InsertionContext {
+) -> ((SolutionContext, SolutionContext), bool) {
     let (decomposed_ctx, route_indices) = decomposed;
-    let decomposed_insertion_ctx = decomposed_ctx.ranked().next().expect(GREEDY_ERROR);
+    let decomposed_insertion_ctx = decomposed_ctx.into_individuals().next().expect(GREEDY_ERROR);
     let environment = original_insertion_ctx.environment.clone();
 
     let (partial_insertion_ctx, _) = create_partial_insertion_ctx(original_insertion_ctx, environment, route_indices);
     let goal = partial_insertion_ctx.problem.goal.as_ref();
 
-    let source_solution = if goal.total_order(decomposed_insertion_ctx, &partial_insertion_ctx) == Ordering::Less {
-        &decomposed_insertion_ctx.solution
-    } else {
-        &partial_insertion_ctx.solution
-    };
+    let is_improvement = goal.total_order(&decomposed_insertion_ctx, &partial_insertion_ctx) == Ordering::Less;
 
+    ((decomposed_insertion_ctx.solution, partial_insertion_ctx.solution), is_improvement)
+}
+
+fn merge_parts(source_solution: SolutionContext, accumulated: InsertionContext) -> InsertionContext {
     let mut accumulated = accumulated;
     let dest_solution = &mut accumulated.solution;
 
