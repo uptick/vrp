@@ -574,22 +574,22 @@ mod dynamic {
                 "local_reschedule_departure".to_string(),
                 1.,
             ),
-            (Arc::new(LKHSearch::new(LKHSearchMode::ImprovementOnly)), "lkh_strict".to_string(), 5.),
+            (Arc::new(LKHSearch::new(LKHSearchMode::ImprovementOnly)), "lkh_strict".to_string(), 3.),
             (
                 Arc::new(LocalSearch::new(Arc::new(ExchangeSwapStar::new(
                     environment.random.clone(),
                     SINGLE_HEURISTIC_QUOTA_LIMIT,
                 )))),
                 "local_swap_star".to_string(),
-                10.,
+                5.,
             ),
             // decompose search methods with different inner heuristic
             (
                 create_variable_search_decompose_search(problem.clone(), environment.clone()),
                 "decompose_search_var".to_string(),
-                25.,
+                10.,
             ),
-            (create_composite_decompose_search(problem, environment), "decompose_search_com".to_string(), 25.),
+            (create_composite_decompose_search(problem, environment), "decompose_search_com".to_string(), 10.),
         ]
     }
 

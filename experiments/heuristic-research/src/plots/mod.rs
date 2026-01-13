@@ -313,14 +313,9 @@ fn find_nearest_generation(generations: &HashMap<usize, Vec<SearchResult>>, requ
     if generations.contains_key(&requested) {
         return requested;
     }
-    
+
     // Find the largest generation that is smaller than requested
-    generations
-        .keys()
-        .filter(|&&g| g <= requested)
-        .copied()
-        .max()
-        .unwrap_or(requested)
+    generations.keys().filter(|&&g| g <= requested).copied().max().unwrap_or(requested)
 }
 
 fn get_search_statistics<T, FF, AF>(

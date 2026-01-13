@@ -118,7 +118,7 @@ fn create_multiple_insertion_contexts(
 
     let route_groups = group_routes_by_proximity(insertion_ctx);
     let (min, max) = max_routes_range;
-    let max = if insertion_ctx.solution.routes.len() < 4 { 2 } else { max };
+    let max = if insertion_ctx.solution.routes.len() < max as usize { (max / 2).max(min) } else { max };
 
     // identify route groups and create contexts from them
     let used_indices = RefCell::new(HashSet::new());
