@@ -52,7 +52,7 @@ impl<'a> TryFrom<&'a str> for ExperimentData {
                 .ok_or_else(|| "Failed to parse telemetry data".to_string())?;
 
             // Find max generation from telemetry data
-            let max_generation = heuristic_state
+            let generation = heuristic_state
                 .search_states
                 .keys()
                 .chain(heuristic_state.heuristic_states.keys())
@@ -60,11 +60,7 @@ impl<'a> TryFrom<&'a str> for ExperimentData {
                 .max()
                 .unwrap_or(0);
 
-            let mut experiment_data = ExperimentData::default();
-            experiment_data.heuristic_state = heuristic_state;
-            experiment_data.generation = max_generation;
-
-            return Ok(experiment_data);
+            return Ok(ExperimentData { heuristic_state, generation, ..Default::default() });
         }
 
         // Try parsing as JSON
@@ -156,7 +152,7 @@ where
         self.generation = statistics.generation;
         self.acquire().generation = statistics.generation;
 
-        let individuals_data = self.inner.all().map(|individual| individual.into()).collect::<Vec<_>>();
+        let individuals_data = self.inner.iter().map(|individual| individual.into()).collect::<Vec<_>>();
         // NOTE this is not exactly how footprint is calculated in production code.
         // In the production version, approximation of the footprint is used to avoid iterating over
         // all individuals in the population on generation update.
@@ -191,8 +187,12 @@ where
         self.inner.ranked()
     }
 
-    fn all(&self) -> Box<dyn Iterator<Item = &'_ Self::Individual> + '_> {
-        self.inner.all()
+    fn iter(&self) -> Box<dyn Iterator<Item = &'_ Self::Individual> + '_> {
+        self.inner.iter()
+    }
+
+    fn into_iter(self) -> Box<dyn Iterator<Item = Self::Individual>> {
+        self.inner.into_iter()
     }
 
     fn size(&self) -> usize {

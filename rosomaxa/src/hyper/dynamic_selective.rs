@@ -671,7 +671,7 @@ where
             for (i, (generation, sample)) in self.agent.tracker.search_telemetry.iter().enumerate() {
                 let include = i < EARLY_SAMPLES
                     || i >= search_total - RECENT_SAMPLES
-                    || (i >= middle_start && i < middle_end && (i - middle_start) % step == 0);
+                    || (i >= middle_start && i < middle_end && (i - middle_start).is_multiple_of(step));
 
                 if include {
                     f.write_fmt(format_args!(
@@ -709,7 +709,7 @@ where
             for (i, (generation, sample)) in self.agent.tracker.heuristic_telemetry.iter().enumerate() {
                 let include = i < EARLY_SAMPLES
                     || i >= heuristic_total - RECENT_SAMPLES
-                    || (i >= middle_start && i < middle_end && (i - middle_start) % step == 0);
+                    || (i >= middle_start && i < middle_end && (i - middle_start).is_multiple_of(step));
 
                 if include {
                     f.write_fmt(format_args!(
