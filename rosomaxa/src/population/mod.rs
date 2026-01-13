@@ -56,7 +56,7 @@ pub trait HeuristicPopulation: Send + Sync {
     fn iter(&self) -> Box<dyn Iterator<Item = &'_ Self::Individual> + '_>;
 
     /// Consumes population and returns an iterator over all individuals in arbitrary order.
-    fn into_iter(self) -> Box<dyn Iterator<Item = Self::Individual>>
+    fn into_iter(self: Box<Self>) -> Box<dyn Iterator<Item = Self::Individual>>
     where
         Self::Individual: 'static;
 

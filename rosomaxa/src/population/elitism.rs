@@ -96,7 +96,7 @@ where
         Box::new(self.individuals.iter())
     }
 
-    fn into_iter(self) -> Box<dyn Iterator<Item = Self::Individual>>
+    fn into_iter(self: Box<Self>) -> Box<dyn Iterator<Item = Self::Individual>>
     where
         Self::Individual: 'static,
     {

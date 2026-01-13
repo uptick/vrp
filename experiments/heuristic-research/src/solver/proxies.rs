@@ -191,8 +191,8 @@ where
         self.inner.iter()
     }
 
-    fn into_iter(self) -> Box<dyn Iterator<Item = Self::Individual>> {
-        self.inner.into_iter()
+    fn into_iter(self: Box<Self>) -> Box<dyn Iterator<Item = Self::Individual>> {
+        Box::new(self.inner).into_iter()
     }
 
     fn size(&self) -> usize {

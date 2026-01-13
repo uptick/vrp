@@ -220,7 +220,7 @@ where
     }
 
     /// Iterates over coordinates and their nodes.
-    pub fn into_iter(self) -> impl Iterator<Item = (Coordinate, Node<I, S>)> {
+    pub fn into_iter_nodes(self) -> impl Iterator<Item = (Coordinate, Node<I, S>)> {
         self.nodes.into_iter()
     }
 

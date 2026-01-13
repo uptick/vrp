@@ -186,14 +186,14 @@ where
         }
     }
 
-    fn into_iter(self) -> Box<dyn Iterator<Item = Self::Individual>> {
+    fn into_iter(self: Box<Self>) -> Box<dyn Iterator<Item = Self::Individual>> {
         match self.phase {
-            RosomaxaPhases::Exploration { network, .. } => Box::new(
-                self.elite
-                    .into_iter()
-                    .chain(network.into_iter().flat_map(|(_, node)| node.storage.population.into_iter())),
-            ),
-            _ => self.elite.into_iter(),
+            RosomaxaPhases::Exploration { network, .. } => {
+                Box::new(Box::new(self.elite).into_iter().chain(
+                    network.into_iter_nodes().flat_map(|(_, node)| Box::new(node.storage.population).into_iter()),
+                ))
+            }
+            _ => Box::new(self.elite).into_iter(),
         }
     }
 
