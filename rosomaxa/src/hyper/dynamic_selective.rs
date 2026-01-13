@@ -642,23 +642,82 @@ where
             return Ok(());
         }
 
+        // To avoid WASM memory issues, downsample telemetry while preserving analysis capability
+        // Strategy: keep early samples, sample periodically, and keep recent samples
+        const MAX_SAMPLES: usize = 5000;
+        const EARLY_SAMPLES: usize = 500;
+        const RECENT_SAMPLES: usize = 500;
+
         f.write_fmt(format_args!("TELEMETRY\n"))?;
         f.write_fmt(format_args!("search:\n"))?;
         f.write_fmt(format_args!("name,generation,reward,from,to,duration\n"))?;
-        for (generation, sample) in self.agent.tracker.search_telemetry.iter() {
-            f.write_fmt(format_args!(
-                "{},{},{},{},{},{}\n",
-                sample.name, generation, sample.reward, sample.transition.0, sample.transition.1, sample.duration
-            ))?;
+
+        let search_total = self.agent.tracker.search_telemetry.len();
+        if search_total <= MAX_SAMPLES {
+            // Small enough, output all
+            for (generation, sample) in self.agent.tracker.search_telemetry.iter() {
+                f.write_fmt(format_args!(
+                    "{},{},{},{},{},{}\n",
+                    sample.name, generation, sample.reward, sample.transition.0, sample.transition.1, sample.duration
+                ))?;
+            }
+        } else {
+            // Downsample: early + periodic middle + recent
+            let middle_samples = MAX_SAMPLES - EARLY_SAMPLES - RECENT_SAMPLES;
+            let middle_start = EARLY_SAMPLES;
+            let middle_end = search_total - RECENT_SAMPLES;
+            let step = (middle_end - middle_start) / middle_samples;
+
+            for (i, (generation, sample)) in self.agent.tracker.search_telemetry.iter().enumerate() {
+                let include = i < EARLY_SAMPLES
+                    || i >= search_total - RECENT_SAMPLES
+                    || (i >= middle_start && i < middle_end && (i - middle_start) % step == 0);
+
+                if include {
+                    f.write_fmt(format_args!(
+                        "{},{},{},{},{},{}\n",
+                        sample.name,
+                        generation,
+                        sample.reward,
+                        sample.transition.0,
+                        sample.transition.1,
+                        sample.duration
+                    ))?;
+                }
+            }
         }
 
         f.write_fmt(format_args!("heuristic:\n"))?;
         f.write_fmt(format_args!("generation,state,name,alpha,beta,mu,v,n\n"))?;
-        for (generation, sample) in self.agent.tracker.heuristic_telemetry.iter() {
-            f.write_fmt(format_args!(
-                "{},{},{},{},{},{},{},{}\n",
-                generation, sample.state, sample.name, sample.alpha, sample.beta, sample.mu, sample.v, sample.n
-            ))?;
+
+        let heuristic_total = self.agent.tracker.heuristic_telemetry.len();
+        if heuristic_total <= MAX_SAMPLES {
+            // Small enough, output all
+            for (generation, sample) in self.agent.tracker.heuristic_telemetry.iter() {
+                f.write_fmt(format_args!(
+                    "{},{},{},{},{},{},{},{}\n",
+                    generation, sample.state, sample.name, sample.alpha, sample.beta, sample.mu, sample.v, sample.n
+                ))?;
+            }
+        } else {
+            // Downsample: early + periodic middle + recent
+            let middle_samples = MAX_SAMPLES - EARLY_SAMPLES - RECENT_SAMPLES;
+            let middle_start = EARLY_SAMPLES;
+            let middle_end = heuristic_total - RECENT_SAMPLES;
+            let step = (middle_end - middle_start) / middle_samples;
+
+            for (i, (generation, sample)) in self.agent.tracker.heuristic_telemetry.iter().enumerate() {
+                let include = i < EARLY_SAMPLES
+                    || i >= heuristic_total - RECENT_SAMPLES
+                    || (i >= middle_start && i < middle_end && (i - middle_start) % step == 0);
+
+                if include {
+                    f.write_fmt(format_args!(
+                        "{},{},{},{},{},{},{},{}\n",
+                        generation, sample.state, sample.name, sample.alpha, sample.beta, sample.mu, sample.v, sample.n
+                    ))?;
+                }
+            }
         }
 
         Ok(())

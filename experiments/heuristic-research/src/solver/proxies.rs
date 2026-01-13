@@ -41,6 +41,31 @@ impl<'a> TryFrom<&'a str> for ExperimentData {
     type Error = String;
 
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        // Check if this is telemetry CSV format (contains "TELEMETRY" somewhere in the content)
+        // Extract telemetry section if present, otherwise try JSON
+        if let Some(telemetry_start) = value.find("TELEMETRY") {
+            // Extract everything from TELEMETRY onwards
+            let telemetry_content = &value[telemetry_start..];
+            
+            // Parse telemetry CSV using existing parser
+            let heuristic_state = HyperHeuristicState::try_parse_all(telemetry_content)
+                .ok_or_else(|| "Failed to parse telemetry data".to_string())?;
+            
+            // Find max generation from telemetry data
+            let max_generation = heuristic_state.search_states.keys()
+                .chain(heuristic_state.heuristic_states.keys())
+                .copied()
+                .max()
+                .unwrap_or(0);
+            
+            let mut experiment_data = ExperimentData::default();
+            experiment_data.heuristic_state = heuristic_state;
+            experiment_data.generation = max_generation;
+            
+            return Ok(experiment_data);
+        }
+        
+        // Try parsing as JSON
         serde_json::from_str(value).map_err(|err| format!("cannot deserialize experiment data: {err}"))
     }
 }

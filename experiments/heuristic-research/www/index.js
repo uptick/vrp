@@ -325,6 +325,15 @@ function updateDynamicPlots(run) {
         case 'vrp': {
             if (run) {
                 let format_type = vrpFormat.selectedOptions[0].value;
+                
+                // Check if data has been loaded
+                if (!Chart.data) {
+                    status.innerText = '⚠ Please load a VRP file first';
+                    status.classList.remove('success');
+                    status.classList.add('loading');
+                    return;
+                }
+                
                 if (format_type === "state") {
                     max_gen = Chart.load_state(Chart.data);
                 } else {
