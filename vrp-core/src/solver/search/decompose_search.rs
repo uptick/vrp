@@ -97,7 +97,7 @@ impl DecomposeSearch {
         let has_improvements = improvements.iter().any(|is_improvement| *is_improvement);
 
         let mut insertion_ctx = if has_improvements {
-            improvements.into_iter().zip(new_parts.into_iter().zip(old_parts.into_iter())).fold(
+            improvements.into_iter().zip(new_parts.into_iter().zip(old_parts)).fold(
                 InsertionContext::new_empty(refinement_ctx.problem.clone(), refinement_ctx.environment.clone()),
                 |accumulated, (is_improvement, (new_part, old_part))| {
                     merge_parts(if is_improvement { new_part } else { old_part }, accumulated)
