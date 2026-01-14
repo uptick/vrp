@@ -6,7 +6,7 @@ use super::*;
 use crate::Timer;
 use crate::algorithms::math::RemedianUsize;
 use crate::algorithms::rl::{SlotAction, SlotFeedback, SlotMachine};
-use crate::utils::{DefaultDistributionSampler, random_argmax};
+use crate::utils::{DefaultDistributionSampler, select_softmax_index};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Formatter;
@@ -123,26 +123,31 @@ impl SearchRewards {
 
     /// Multiplier applied when a solution improves the Global Best Known.
     /// This is the "Jackpot" factor.
-    pub const GLOBAL_BEST_MULTIPLIER: Float = 2.5;
+    pub const GLOBAL_BEST_MULTIPLIER: Float = 2.0;
 
     /// Multiplier applied when a solution is diverse but not a global improvement.
     /// Keeps "Diverse" operators alive but with low signal.
-    pub const DIVERSE_MULTIPLIER: Float = 0.05;
+    pub const DIVERSE_MULTIPLIER: Float = 0.01;
 
     /// The maximum percentage (+/-) that execution duration can affect the reward.
     /// e.g., 0.2 means performance can scale reward by [0.8, 1.2].
     pub const PERF_TOLERANCE: Float = 0.2;
 
+    /// Softmax/Boltzmann policy temperature range (over Thompson samples).
+    /// Higher temperature => more exploration.
+    pub const SOFTMAX_TEMPERATURE_MIN: Float = 0.3;
+    pub const SOFTMAX_TEMPERATURE_MAX: Float = 2.0;
+
     /// The "Cheap Failure"
     /// The penalty applied when an operator produces no improvement.
     /// A small negative value ensures that "doing nothing" is worse than "finding diverse solutions".
     /// This forces the Slot Machine to eventually lower the confidence of stagnating operators.
-    pub const PENALTY_MIN: Float = -0.01;
+    pub const PENALTY_MIN: Float = -0.5;
 
     /// The "Expensive Failure"
     /// The penalty applied when an operator produces a negative outcome.
     /// A larger negative value ensures that failures are strongly discouraged.
-    pub const PENALTY_MAX: Float = -0.1;
+    pub const PENALTY_MAX: Float = -2.0;
 
     /// Calculates the ratio between the "Jackpot" and the "Normal" signal.
     /// Used by the Agent to determine how many times larger than the average
@@ -156,6 +161,14 @@ impl SearchRewards {
         let typical_reward = (1.0 + Self::DISTANCE_OFFSET) * Self::BASE_REWARD;
 
         max_theoretical / typical_reward
+    }
+
+    /// Derives a temperature based on the search progress.
+    /// When the search plateaus, we increase exploration.
+    pub fn softmax_temperature(improvement_1000_ratio: Float) -> Float {
+        // In other places we treat 10% improvement as "fast flow".
+        let flow = (improvement_1000_ratio * 10.0).clamp(0.0, 1.0);
+        Self::SOFTMAX_TEMPERATURE_MIN + (1.0 - flow) * (Self::SOFTMAX_TEMPERATURE_MAX - Self::SOFTMAX_TEMPERATURE_MIN)
     }
 }
 
@@ -334,14 +347,11 @@ where
         };
 
         // Get contextually appropriate slot machines.
-        let (slot_idx, slot_machine) = self
-            .slot_machines
-            .get(&from)
-            .and_then(|slots| {
-                random_argmax(slots.iter().map(|(slot, _)| slot.sample()), self.random.as_ref())
-                    .and_then(|slot_idx| slots.get(slot_idx).map(|(slot, _)| (slot_idx, slot)))
-            })
-            .expect("cannot get slot machine");
+        let slots = self.slot_machines.get(&from).expect("cannot get slot machines");
+        let temperature = SearchRewards::softmax_temperature(heuristic_ctx.statistics().improvement_1000_ratio);
+        let samples = slots.iter().map(|(slot, _)| slot.sample()).collect::<Vec<_>>();
+        let slot_idx = select_softmax_index(&samples, temperature, self.random.as_ref());
+        let slot_machine = &slots[slot_idx].0;
 
         let approx_median = self.tracker.approx_median();
 
@@ -430,15 +440,16 @@ where
             let distance_initial = get_relative_distance(objective, new_solution, initial_solution);
             let distance_best = get_relative_distance(objective, new_solution, best_known);
 
-            // Reward components (max ~4.0 for local, ~10.0 for global).
             let reward_initial = (distance_initial + SearchRewards::DISTANCE_OFFSET) * SearchRewards::BASE_REWARD;
-            let reward_best = (distance_best + SearchRewards::DISTANCE_OFFSET)
-                * SearchRewards::BASE_REWARD
-                * SearchRewards::GLOBAL_BEST_MULTIPLIER;
 
             match (distance_initial.total_cmp(&0.), distance_best.total_cmp(&0.)) {
                 // Global Jackpot
-                (Ordering::Greater, Ordering::Greater) => Some(reward_initial + reward_best),
+                (Ordering::Greater, Ordering::Greater) => {
+                    let reward_best = (distance_best + SearchRewards::DISTANCE_OFFSET)
+                        * SearchRewards::BASE_REWARD
+                        * SearchRewards::GLOBAL_BEST_MULTIPLIER;
+                    Some(reward_initial + reward_best)
+                }
 
                 // Local/Diverse Improvement
                 (Ordering::Greater, _) => Some(reward_initial * SearchRewards::DIVERSE_MULTIPLIER),

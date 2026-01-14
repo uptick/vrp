@@ -134,7 +134,7 @@ pub fn get_static_heuristic(
 
     let heuristic_group: TargetHeuristicGroup = vec![
         (
-            Arc::new(DecomposeSearch::new(default_operator.clone(), (2, 4), 4, SINGLE_HEURISTIC_QUOTA_LIMIT)),
+            Arc::new(DecomposeSearch::new(default_operator.clone(), (2, 4), 4)),
             create_context_operator_probability(
                 300,
                 10,
@@ -278,8 +278,6 @@ fn get_limits(problem: &Problem) -> (RemovalLimits, RemovalLimits) {
 
     (normal_limits, small_limits)
 }
-
-const SINGLE_HEURISTIC_QUOTA_LIMIT: usize = 200;
 
 pub use self::builder::create_default_init_operators;
 pub use self::builder::create_default_processing;
@@ -475,7 +473,7 @@ mod statik {
     pub fn create_default_local_search(random: Arc<dyn Random>) -> TargetSearchOperator {
         Arc::new(LocalSearch::new(Arc::new(CompositeLocalOperator::new(
             vec![
-                (Arc::new(ExchangeSwapStar::new(random, SINGLE_HEURISTIC_QUOTA_LIMIT)), 200),
+                (Arc::new(ExchangeSwapStar::new(random)), 200),
                 (Arc::new(ExchangeInterRouteBest::default()), 100),
                 (Arc::new(ExchangeSequence::default()), 100),
                 (Arc::new(ExchangeInterRouteRandom::default()), 30),
@@ -494,8 +492,8 @@ mod dynamic {
     fn get_weighted_recreates(problem: &Problem, random: Arc<dyn Random>) -> Vec<(Arc<dyn Recreate>, String, Float)> {
         let cheapest: Arc<dyn Recreate> = Arc::new(RecreateWithCheapest::new(random.clone()));
         vec![
-            (cheapest.clone(), "cheapest".to_string(), 1.),
-            (Arc::new(RecreateWithBlinks::new_with_defaults(random.clone())), "blinks".to_string(), 3.),
+            (cheapest.clone(), "cheapest".to_string(), 2.),
+            (Arc::new(RecreateWithBlinks::new_with_defaults(random.clone())), "blinks".to_string(), 2.),
             (Arc::new(RecreateWithSkipBest::new(1, 2, random.clone())), "skip_best".to_string(), 1.),
             (Arc::new(RecreateWithRegret::new(1, 3, random.clone())), "regret".to_string(), 1.),
             (Arc::new(RecreateWithPerturbation::new_with_defaults(random.clone())), "perturbation".to_string(), 1.),
@@ -537,19 +535,19 @@ mod dynamic {
             (
                 create_weighted(|limits| Arc::new(AdjustedStringRemoval::new_with_defaults(limits))),
                 "asr".to_string(),
-                7.,
+                2.,
             ),
-            (create_weighted(|limits| Arc::new(NeighbourRemoval::new(limits))), "neighbour".to_string(), 5.),
-            (create_weighted(|limits| Arc::new(WorstRouteRemoval::new(limits))), "worst_route".to_string(), 5.),
-            (create_weighted(|limits| Arc::new(WorstJobRemoval::new(4, limits))), "worst_job".to_string(), 4.),
-            (create_weighted(|limits| Arc::new(CloseRouteRemoval::new(limits))), "close_route".to_string(), 4.),
-            (create_weighted(|limits| Arc::new(RandomJobRemoval::new(limits))), "random_job".to_string(), 4.),
-            (create_weighted(|limits| Arc::new(RandomRouteRemoval::new(limits))), "random_route".to_string(), 2.),
-            (Arc::new(ClusterRemoval::new_with_defaults(problem).unwrap()), "cluster".to_string(), 4.),
+            (create_weighted(|limits| Arc::new(NeighbourRemoval::new(limits))), "neighbour".to_string(), 1.),
+            (create_weighted(|limits| Arc::new(WorstRouteRemoval::new(limits))), "worst_route".to_string(), 1.),
+            (create_weighted(|limits| Arc::new(WorstJobRemoval::new(4, limits))), "worst_job".to_string(), 1.),
+            (create_weighted(|limits| Arc::new(CloseRouteRemoval::new(limits))), "close_route".to_string(), 1.),
+            (create_weighted(|limits| Arc::new(RandomJobRemoval::new(limits))), "random_job".to_string(), 1.),
+            (create_weighted(|limits| Arc::new(RandomRouteRemoval::new(limits))), "random_route".to_string(), 1.),
+            (Arc::new(ClusterRemoval::new_with_defaults(problem).unwrap()), "cluster".to_string(), 1.),
         ]
     }
 
-    fn get_mutations(
+    fn get_search_operators(
         problem: Arc<Problem>,
         environment: Arc<Environment>,
     ) -> Vec<(TargetSearchOperator, String, Float)> {
@@ -574,22 +572,14 @@ mod dynamic {
                 "local_reschedule_departure".to_string(),
                 1.,
             ),
-            (Arc::new(LKHSearch::new(LKHSearchMode::ImprovementOnly)), "lkh_strict".to_string(), 3.),
+            (Arc::new(LKHSearch::new(LKHSearchMode::ImprovementOnly)), "lkh_strict".to_string(), 1.),
             (
-                Arc::new(LocalSearch::new(Arc::new(ExchangeSwapStar::new(
-                    environment.random.clone(),
-                    SINGLE_HEURISTIC_QUOTA_LIMIT,
-                )))),
+                Arc::new(LocalSearch::new(Arc::new(ExchangeSwapStar::new(environment.random.clone())))),
                 "local_swap_star".to_string(),
-                5.,
+                2.,
             ),
-            // decompose search methods with different inner heuristic
-            (
-                create_variable_search_decompose_search(problem.clone(), environment.clone()),
-                "decompose_search_var".to_string(),
-                10.,
-            ),
-            (create_composite_decompose_search(problem, environment), "decompose_search_com".to_string(), 10.),
+            // combined decompose search with different inner heuristics
+            (create_combined_decompose_search(problem, environment), "decompose_search".to_string(), 2.),
         ]
     }
 
@@ -621,20 +611,28 @@ mod dynamic {
                     (
                         Arc::new(RuinAndRecreate::new(ruin.clone(), recreate.clone())),
                         format!("{ruin_name}+{recreate_name}"),
-                        ruin_weight * recreate_weight,
+                        ruin_weight + recreate_weight,
                     )
                 })
             })
             .collect::<Vec<_>>();
 
-        let mutations = get_mutations(problem.clone(), environment.clone());
+        let operators = get_search_operators(problem.clone(), environment.clone());
         let heuristic_filter = problem.extras.get_heuristic_filter();
 
         ruin_recreate_ops
             .into_iter()
-            .chain(mutations)
+            .chain(operators)
             .filter(|(_, name, _)| heuristic_filter.as_ref().is_none_or(|filter| (filter)(name.as_str())))
             .collect::<Vec<_>>()
+    }
+
+    /// Creates a default operator which is good for general use.
+    pub fn create_default_good_operator(problem: Arc<Problem>, environment: Arc<Environment>) -> TargetSearchOperator {
+        Arc::new(RuinAndRecreate::new(
+            Arc::new(AdjustedStringRemoval::new_with_defaults(get_limits(problem.as_ref()).0)),
+            Arc::new(RecreateWithBlinks::new_with_defaults(environment.random.clone())),
+        ))
     }
 
     /// Creates a default ruin-and-recreate operator for internal use (e.g., decompose search, infeasible search).
@@ -663,7 +661,7 @@ mod dynamic {
     pub fn create_default_local_search(random: Arc<dyn Random>) -> Arc<LocalSearch> {
         Arc::new(LocalSearch::new(Arc::new(CompositeLocalOperator::new(
             vec![
-                (Arc::new(ExchangeSwapStar::new(random, SINGLE_HEURISTIC_QUOTA_LIMIT / 4)), 2),
+                (Arc::new(ExchangeSwapStar::new(random)), 2),
                 (Arc::new(ExchangeInterRouteBest::default()), 1),
                 (Arc::new(ExchangeInterRouteRandom::default()), 1),
                 (Arc::new(ExchangeIntraRouteRandom::default()), 1),
@@ -682,13 +680,13 @@ mod dynamic {
             Arc::new(WeightedHeuristicOperator::new(
                 vec![
                     create_default_inner_ruin_recreate(problem.clone(), environment.clone()),
+                    create_default_good_operator(problem, environment.clone()),
                     create_default_local_search(environment.random.clone()),
                 ],
-                vec![10, 1],
+                vec![9, 3, 1],
             )),
             (2, 4),
             2,
-            SINGLE_HEURISTIC_QUOTA_LIMIT,
         ))
     }
 
@@ -707,7 +705,16 @@ mod dynamic {
             ])),
             (2, 4),
             2,
-            SINGLE_HEURISTIC_QUOTA_LIMIT,
+        ))
+    }
+
+    fn create_combined_decompose_search(problem: Arc<Problem>, environment: Arc<Environment>) -> TargetSearchOperator {
+        Arc::new(WeightedHeuristicOperator::new(
+            vec![
+                create_variable_search_decompose_search(problem.clone(), environment.clone()),
+                create_composite_decompose_search(problem, environment),
+            ],
+            vec![1, 1],
         ))
     }
 }
