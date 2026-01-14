@@ -578,8 +578,12 @@ mod dynamic {
                 "local_swap_star".to_string(),
                 2.,
             ),
-            // combined decompose search with different inner heuristics
-            (create_combined_decompose_search(problem, environment), "decompose_search".to_string(), 2.),
+            (
+                create_variable_search_decompose_search(problem.clone(), environment.clone()),
+                "variable_decompose_search".to_string(),
+                2.,
+            ),
+            (create_composite_decompose_search(problem, environment), "composite_decompose_search".to_string(), 2.),
         ]
     }
 
@@ -705,16 +709,6 @@ mod dynamic {
             ])),
             (2, 4),
             2,
-        ))
-    }
-
-    fn create_combined_decompose_search(problem: Arc<Problem>, environment: Arc<Environment>) -> TargetSearchOperator {
-        Arc::new(WeightedHeuristicOperator::new(
-            vec![
-                create_variable_search_decompose_search(problem.clone(), environment.clone()),
-                create_composite_decompose_search(problem, environment),
-            ],
-            vec![1, 1],
         ))
     }
 }
