@@ -81,7 +81,7 @@ impl DecomposeSearch {
 
         // get new and old parts and detect if there was any improvement in any part
         let ((new_parts, old_parts), improvements): ((Vec<_>, Vec<_>), Vec<_>) =
-            decomposed.into_iter().map(|decomposed| get_solution_parts(decomposed)).unzip();
+            decomposed.into_iter().map(get_solution_parts).unzip();
 
         let has_improvements = improvements.iter().any(|is_improvement| *is_improvement);
 
@@ -348,7 +348,7 @@ impl HeuristicPopulation for DecomposePopulation {
             return false;
         }
 
-        individuals.into_iter().fold(false, |acc, individual| acc || self.add(individual))
+        individuals.into_iter().any(|individual| self.add(individual))
     }
 
     fn add(&mut self, individual: Self::Individual) -> bool {
@@ -397,7 +397,7 @@ impl HeuristicPopulation for DecomposePopulation {
         // Contract used by `get_solution_parts`:
         // - Always yield baseline first.
         // - Then yield either best (if any) or last non-improving (if any).
-        Box::new(once(self.baseline).chain(self.best.or(self.last_non_improving).into_iter()))
+        Box::new(once(self.baseline).chain(self.best.or(self.last_non_improving)))
     }
 
     fn size(&self) -> usize {
