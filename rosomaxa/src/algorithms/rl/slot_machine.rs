@@ -51,9 +51,6 @@ where
     S: DistributionSampler + Clone,
 {
     /// Creates a new instance with Universal Priors.
-    ///
-    /// Since the `SearchAgent` externally normalizes rewards to standard scores (Z-scores),
-    /// we can use universal constants for the priors rather than problem-specific guesses.
     pub fn new(prior_mean: Float, action: A, sampler: S) -> Self {
         // Universal priors for a Standard Normal distribution N(0, 1):
         // Alpha = 2.0 implies a weak prior belief with mathematically defined variance.
@@ -61,8 +58,8 @@ where
         let alpha = 2.0;
         let beta = 1.0;
 
-        // Prior mean is clamped to a reasonable Z-score range (-0 to 10)
-        let mu = prior_mean.clamp(0.01, 10.0);
+        // Prior mean is clamped to a reasonable reward range [0.1, 2.0].
+        let mu = prior_mean.clamp(0.1, 2.0);
 
         // Variance expectation v = Beta / (Alpha - 1) = 1.0.
         // This implies we are "uncertain" by about +/- 1.0 standard deviation unit,
@@ -102,16 +99,15 @@ where
     pub fn update(&mut self, feedback: &A::Feedback) {
         let reward = feedback.reward();
 
-        // --- 1. Memory Decay (Non-Stationarity) ---
+        // 1. Memory Decay (Non-Stationarity)
 
-        // A decay factor of 0.999 implies a "memory horizon" of ~1000 samples.
-        // This is crucial for VRP where improvements are rare (sparse signals).
-        // It provides enough patience to wait for "lottery ticket" wins while still
-        // allowing the agent to abandon operators that stop working in later phases.
-        const DECAY_FACTOR: Float = 0.999;
+        // A decay factor of 0.995 implies a "memory horizon" of ~200 samples.
+        // This faster forgetting prevents operator monopolies and allows the agent
+        // to adapt more quickly when search dynamics change between phases.
+        const DECAY_FACTOR: Float = 0.995;
 
         // Decay the sufficient statistics.
-        // CRITICAL: We clamp alpha to >= 2.0. The variance of the Inverse-Gamma
+        // We clamp alpha to >= 2.0. The variance of the Inverse-Gamma
         // distribution is defined as Beta / (Alpha - 1). If Alpha <= 1, variance is undefined.
         // Keeping Alpha >= 2.0 ensures numerical stability and prevents division by zero.
         self.alpha = (self.alpha * DECAY_FACTOR).max(2.0);
@@ -121,7 +117,7 @@ where
         // We do not decay this value so we can track total lifetime usage.
         self.n += 1;
 
-        // --- 2. Bayesian Update (Normal-Gamma) ---
+        // 2. Bayesian Update (Normal-Gamma)
 
         // Standard update adds 0.5 to Alpha for each new observation n=1.
         self.alpha += 0.5;
@@ -144,7 +140,7 @@ where
         // contribution to the variance relative to prior knowledge.
         self.beta += 0.5 * (reward - old_mu).powi(2) * effective_n / (effective_n + 1.0);
 
-        // --- 3. Variance Estimation ---
+        // 3. Variance Estimation
 
         // Calculate expected variance E[σ²] = Beta / (Alpha - 1).
         // Since we enforced Alpha >= 2.0 (decayed) + 0.5 (update) = 2.5,

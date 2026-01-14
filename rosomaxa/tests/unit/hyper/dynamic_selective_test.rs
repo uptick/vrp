@@ -56,58 +56,24 @@ fn can_estimate_median() {
     assert!(median > 0);
 }
 
-parameterized_test! {can_estimate_reward_multiplier, (improvement_ratio, approx_median, duration, expected), {
-    can_estimate_reward_multiplier_impl(improvement_ratio, approx_median, duration, expected);
+parameterized_test! {can_compute_relative_distance, (fitness_a, fitness_b, expected), {
+    can_compute_relative_distance_impl(fitness_a, fitness_b, expected);
 }}
 
-can_estimate_reward_multiplier! {
-    case_01_fast_with_improvement: (0.1, Some(10), 5, 1.104),    // Fast operator during improvement: ln(2.0)*0.15*1.0 ≈ 0.104
-    case_02_slow_with_improvement: (0.1, Some(10), 20, 0.896),   // Slow operator during improvement: ln(0.5)*0.15*1.0 ≈ -0.104
-    case_03_fast_partial_improvement: (0.05, Some(10), 5, 1.052), // Fast with 50% damping: ln(2.0)*0.15*0.5 ≈ 0.052
-    case_04_no_improvement: (0.0, Some(10), 5, 1.0),             // No improvement = no bonus
-    case_05_no_median: (0.1, None, 5, 1.0),                      // No median = baseline
-    case_06_clamped_fast: (0.1, Some(10), 1, 1.2),               // Very fast but clamped to PERF_TOLERANCE (0.2)
-    case_07_clamped_slow: (0.1, Some(10), 100, 0.8),             // Very slow but clamped to -PERF_TOLERANCE (-0.2)
+can_compute_relative_distance! {
+    case_01_improvement: (vec![90.0], vec![100.0], 0.1),           // 10% distance: |100-90|/100 = 0.1
+    case_02_regression: (vec![110.0], vec![100.0], 0.09),          // 9% distance: |110-100|/110 ≈ 0.09
+    case_03_equal: (vec![100.0], vec![100.0], 0.0),                // Equal = no distance
+    case_04_primary_priority: (vec![90.0, 100.0], vec![100.0, 90.0], 0.1), // Primary objective distance
 }
 
-fn can_estimate_reward_multiplier_impl(
-    improvement_ratio: Float,
-    approx_median: Option<usize>,
-    duration: usize,
-    expected: Float,
-) {
-    // Create a mock context with the specified improvement ratio
-    let mut heuristic_ctx = create_default_heuristic_context();
+fn can_compute_relative_distance_impl(fitness_a: Vec<Float>, fitness_b: Vec<Float>, expected: Float) {
+    let solution_a = VectorSolution::new(vec![], fitness_a.first().copied().unwrap_or(0.0), fitness_a);
+    let solution_b = VectorSolution::new(vec![], fitness_b.first().copied().unwrap_or(0.0), fitness_b);
 
-    // Simulate improvement ratio by triggering generations
-    if improvement_ratio > 0.0 {
-        let num_improvements = (improvement_ratio * 1000.0) as usize;
+    let result = get_relative_distance(&solution_a, &solution_b);
 
-        // Add improving solutions
-        for i in 0..num_improvements {
-            let solution = VectorSolution::new(vec![], -(i as Float), vec![]);
-            heuristic_ctx.on_generation(vec![solution], 0.0, Timer::start());
-        }
-
-        // Add non-improving solutions
-        for _ in num_improvements..1000 {
-            let solution = VectorSolution::new(vec![], 100.0, vec![]);
-            heuristic_ctx.on_generation(vec![solution], 0.0, Timer::start());
-        }
-    }
-
-    let solution = VectorSolution::new(vec![], 0., vec![]);
-    let search_ctx = SearchContext {
-        heuristic_ctx: &heuristic_ctx,
-        from: SearchState::BestKnown,
-        slot_idx: 0,
-        solution: &solution,
-        approx_median,
-    };
-
-    let result = estimate_reward_perf_multiplier(&search_ctx, duration);
-
-    assert!((result - expected).abs() < 0.001, "Expected {expected}, got {result}");
+    assert!((result - expected).abs() < 0.02, "Expected ~{expected}, got {result}");
 }
 
 #[test]
@@ -132,18 +98,8 @@ fn can_display_heuristic_info() {
 }
 
 #[test]
-fn can_handle_when_objective_lies() {
-    struct LiarObjective;
-
-    impl HeuristicObjective for LiarObjective {
-        type Solution = TestData;
-
-        fn total_order(&self, _: &Self::Solution, _: &Self::Solution) -> Ordering {
-            // that is where it lies based on some non-fitness related factors for total order
-            Ordering::Greater
-        }
-    }
-
+fn can_handle_equal_fitness_solutions() {
+    // Test that solutions with identical fitness return 0 distance.
     struct TestData;
 
     impl HeuristicSolution for TestData {
@@ -157,7 +113,7 @@ fn can_handle_when_objective_lies() {
         }
     }
 
-    let distance = get_relative_distance(&LiarObjective, &TestData, &TestData);
+    let distance = get_relative_distance(&TestData, &TestData);
 
     assert_eq!(distance, 0.)
 }
