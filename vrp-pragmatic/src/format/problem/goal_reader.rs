@@ -222,9 +222,15 @@ fn get_objective_feature_layer(
 }
 
 fn get_hierarchical_areas_feature(blocks: &ProblemBlocks, levels: usize) -> GenericResult<Feature> {
-    let locations = (0..blocks.transport.size()).collect::<Vec<_>>();
     let profile =
         blocks.fleet.profiles.first().cloned().ok_or_else(|| GenericError::from("should have at least one profile"))?;
+    let locations: Vec<_> = (0..blocks.transport.size())
+        .filter(|&loc| {
+            // Exclude locations with zero distance to all others (no real coordinates)
+            (0..blocks.transport.size())
+                .any(|other| other != loc && blocks.transport.distance_approx(&profile, loc, other) > 0.0)
+        })
+        .collect();
 
     let clusters = create_hierarchical_kmedoids(&locations, levels, {
         let transport = blocks.transport.clone();
@@ -236,6 +242,13 @@ fn get_hierarchical_areas_feature(blocks: &ProblemBlocks, levels: usize) -> Gene
         .set_transport_cost(blocks.transport.clone())
         .set_activity_cost(blocks.activity.clone())
         .build_minimize_distance()?;
+
+    // With too few distinct locations, clustering cannot produce a usable hierarchy
+    // (the first tier must have exactly two clusters), so fall back to the plain
+    // distance minimization the feature is based on.
+    if clusters.first().is_none_or(|clusters| clusters.len() != 2) {
+        return Ok(cost_feature);
+    }
 
     create_hierarchical_areas_feature(cost_feature, &clusters, {
         let transport = blocks.transport.clone();
