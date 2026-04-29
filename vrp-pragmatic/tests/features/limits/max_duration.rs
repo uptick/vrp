@@ -1,11 +1,12 @@
 use crate::format::problem::*;
 use crate::format::solution::*;
+use crate::format_time;
 use crate::helpers::*;
 use vrp_core::prelude::Float;
 
 fn create_vehicle_type_with_max_duration_limit(max_duration: Float) -> VehicleType {
     VehicleType {
-        limits: Some(VehicleLimits { max_distance: None, max_duration: Some(max_duration), tour_size: None }),
+        limits: Some(VehicleLimits { max_distance: None, max_duration: Some(max_duration), tour_size: None, allow_out_of_hours_depot_travel: None }),
         ..create_default_vehicle_type()
     }
 }
@@ -114,6 +115,69 @@ fn can_skip_job_from_multiple_because_of_max_duration() {
                 }
             ]))
             .build()
+    );
+}
+
+#[test]
+fn allow_out_of_hours_depot_travel_moves_shift_bounds_onto_first_and_last_jobs() {
+    // Depot at (0,0), first job at (10,0) → 10 units of travel.
+    // Shift bounds are [100, 200]. With the flag, the vehicle should be able to leave the
+    // depot before t=100 so it arrives at the first job at t>=100. The last job departure
+    // must be <= 200, but the depot return may happen later.
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 5.)],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                shifts: vec![VehicleShift {
+                    start: ShiftStart {
+                        earliest: format_time(100.),
+                        latest: None,
+                        location: (0., 0.).to_loc(),
+                    },
+                    end: Some(ShiftEnd {
+                        earliest: None,
+                        latest: format_time(200.),
+                        location: (0., 0.).to_loc(),
+                    }),
+                    breaks: None,
+                    reloads: None,
+                    recharges: None,
+                }],
+                limits: Some(VehicleLimits {
+                    max_distance: None,
+                    max_duration: None,
+                    tour_size: None,
+                    allow_out_of_hours_depot_travel: Some(true),
+                }),
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert!(solution.unassigned.is_none() || solution.unassigned.unwrap().is_empty());
+    assert_eq!(solution.tours.len(), 1);
+
+    let tour = &solution.tours[0];
+    let depot_departure = crate::parse_time(tour.stops[0].schedule().departure.as_str());
+    let first_job_arrival = crate::parse_time(tour.stops[1].schedule().arrival.as_str());
+
+    // The depot was left before the shift started (at t<100) so that the first job is
+    // reached at the shift start. Without the flag, depot departure would be pinned at >=100.
+    assert!(
+        depot_departure < 100.,
+        "expected depot to depart before shift start (t<100), got t={depot_departure}"
+    );
+    assert!(
+        first_job_arrival >= 100.,
+        "expected first-job arrival at/after shift start (t>=100), got t={first_job_arrival}"
     );
 }
 

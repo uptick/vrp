@@ -31,6 +31,10 @@ pub fn create_activity_limit_feature(
 
 /// Creates a travel limits such as distance and/or duration.
 /// This is a hard constraint.
+///
+/// `shift_start_latest_fn` returns `Some(latest)` when the actor uses
+/// `allow_out_of_hours_depot_travel` AND the shift has a `start.latest` to enforce on the
+/// first job's arrival. Returns `None` to skip this check entirely.
 pub fn create_travel_limit_feature(
     name: &str,
     transport: Arc<dyn TransportCost>,
@@ -39,6 +43,7 @@ pub fn create_travel_limit_feature(
     duration_code: ViolationCode,
     tour_distance_limit_fn: TravelLimitFn<Distance>,
     tour_duration_limit_fn: TravelLimitFn<Duration>,
+    shift_start_latest_fn: TravelLimitFn<Duration>,
 ) -> Result<Feature, GenericError> {
     FeatureBuilder::default()
         .with_name(name)
@@ -46,6 +51,7 @@ pub fn create_travel_limit_feature(
             transport: transport.clone(),
             tour_distance_limit_fn,
             tour_duration_limit_fn: tour_duration_limit_fn.clone(),
+            shift_start_latest_fn,
             distance_code,
             duration_code,
         })
@@ -90,6 +96,7 @@ struct TravelLimitConstraint {
     transport: Arc<dyn TransportCost>,
     tour_distance_limit_fn: TravelLimitFn<Distance>,
     tour_duration_limit_fn: TravelLimitFn<Duration>,
+    shift_start_latest_fn: TravelLimitFn<Duration>,
     distance_code: ViolationCode,
     duration_code: ViolationCode,
 }
@@ -105,8 +112,29 @@ impl FeatureConstraint for TravelLimitConstraint {
         match move_ctx {
             MoveContext::Route { .. } => None,
             MoveContext::Activity { route_ctx, activity_ctx, .. } => {
-                let tour_distance_limit = (self.tour_distance_limit_fn)(route_ctx.route().actor.as_ref());
-                let tour_duration_limit = (self.tour_duration_limit_fn)(route_ctx.route().actor.as_ref());
+                let actor = route_ctx.route().actor.as_ref();
+
+                // When inserting the first job (prev is the depot), enforce the shift's
+                // `start.latest` against the first-job arrival. The depot-start time window is
+                // relaxed under `allow_out_of_hours_depot_travel`, so nothing else enforces it.
+                if activity_ctx.prev.job.is_none()
+                    && let Some(start_latest) = (self.shift_start_latest_fn)(actor)
+                {
+                    let travel = self.transport.duration(
+                        route_ctx.route(),
+                        activity_ctx.prev.place.location,
+                        activity_ctx.target.place.location,
+                        TravelTime::Departure(activity_ctx.prev.schedule.departure),
+                    );
+                    let arrival = (activity_ctx.prev.schedule.departure + travel)
+                        .max(activity_ctx.target.place.time.start);
+                    if arrival > start_latest {
+                        return ConstraintViolation::skip(self.duration_code);
+                    }
+                }
+
+                let tour_distance_limit = (self.tour_distance_limit_fn)(actor);
+                let tour_duration_limit = (self.tour_duration_limit_fn)(actor);
 
                 if tour_distance_limit.is_some() || tour_duration_limit.is_some() {
                     let (change_distance, change_duration) = self.calculate_travel(route_ctx, activity_ctx);

@@ -8,7 +8,7 @@ use crate::format::UnknownLocationFallback;
 use crate::get_unique_locations;
 use crate::utils::get_approx_transportation;
 use std::collections::HashSet;
-use vrp_core::construction::enablers::create_typed_actor_groups;
+use vrp_core::construction::enablers::{FirstJobArrivalFloorDimension, create_typed_actor_groups};
 use vrp_core::construction::features::{VehicleCapacityDimension, VehicleSkillsDimension};
 use vrp_core::models::common::*;
 use vrp_core::models::problem::*;
@@ -111,31 +111,36 @@ pub(super) fn read_fleet(api_problem: &ApiProblem, props: &ProblemProperties, co
         let index = *profile_indices.get(&vehicle.profile.matrix).unwrap();
         let profile = Profile::new(index, vehicle.profile.scale);
 
-        let tour_size = vehicle.limits.as_ref().and_then(|l| l.tour_size);
+        let tour_size = vehicle.limits.as_ref().and_then(|limits| limits.tour_size);
+
+        let allow_out_of_hours_depot_travel =
+            vehicle.limits.as_ref().and_then(|limits| limits.allow_out_of_hours_depot_travel).unwrap_or(false);
 
         for (shift_index, shift) in vehicle.shifts.iter().enumerate() {
-            let start = {
-                let location = coord_index.get_by_loc(&shift.start.location).unwrap();
-                let earliest = parse_time(&shift.start.earliest);
-                let latest = shift.start.latest.as_ref().map(|time| parse_time(time));
-                (location, earliest, latest)
+            let shift_start_earliest = parse_time(&shift.start.earliest);
+            let shift_start_latest = shift.start.latest.as_ref().map(|time| parse_time(time));
+
+            // When `allow_out_of_hours_depot_travel` is set, the shift start applies to the first
+            // job's arrival rather than to the depot departure. Relax the depot start window;
+            // the floor is re-applied in `apply_first_job_arrival_floor` (via `FirstJobArrivalFloor`
+            // dim) and `start.latest` is enforced in the travel-limit constraint. The end side
+            // is NOT relaxed — the back-propagated `latest_arrival` bounds the last-job departure.
+            let start_time = if allow_out_of_hours_depot_travel {
+                TimeInterval { earliest: None, latest: None }
+            } else {
+                TimeInterval { earliest: Some(shift_start_earliest), latest: shift_start_latest }
             };
+            let start_location = coord_index.get_by_loc(&shift.start.location).unwrap();
 
             let end = shift.end.as_ref().map(|end| {
                 let location = coord_index.get_by_loc(&end.location).unwrap();
-                let time = parse_time(&end.latest);
-                (location, time)
+                let time = TimeInterval { earliest: None, latest: Some(parse_time(&end.latest)) };
+                VehiclePlace { location, time }
             });
 
             let details = vec![VehicleDetail {
-                start: Some(VehiclePlace {
-                    location: start.0,
-                    time: TimeInterval { earliest: Some(start.1), latest: start.2 },
-                }),
-                end: end.map(|(location, time)| VehiclePlace {
-                    location,
-                    time: TimeInterval { earliest: None, latest: Some(time) },
-                }),
+                start: Some(VehiclePlace { location: start_location, time: start_time }),
+                end,
             }];
 
             vehicle.vehicle_ids.iter().for_each(|vehicle_id| {
@@ -148,6 +153,13 @@ pub(super) fn read_fleet(api_problem: &ApiProblem, props: &ProblemProperties, co
 
                 if let Some(tour_size) = tour_size {
                     dimens.set_tour_size(tour_size);
+                }
+
+                if allow_out_of_hours_depot_travel {
+                    dimens.set_first_job_arrival_floor(shift_start_earliest);
+                    if let Some(latest) = shift_start_latest {
+                        dimens.set_shift_start_latest(latest);
+                    }
                 }
 
                 if props.has_multi_dimen_capacity {

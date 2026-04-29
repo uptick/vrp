@@ -1,6 +1,6 @@
 use crate::construction::heuristics::{RouteContext, RouteState};
 use crate::models::OP_START_MSG;
-use crate::models::common::{Distance, Duration, Schedule, Timestamp};
+use crate::models::common::{Dimensions, Distance, Duration, Schedule, Timestamp};
 use crate::models::problem::{ActivityCost, TransportCost, TravelTime};
 use rosomaxa::prelude::Float;
 use rosomaxa::utils::UnwrapValue;
@@ -10,6 +10,8 @@ custom_activity_state!(pub(crate) WaitingTime typeof Timestamp);
 custom_tour_state!(pub TotalDistance typeof Distance);
 custom_tour_state!(pub TotalDuration typeof Duration);
 custom_tour_state!(pub(crate) LimitDuration typeof Duration);
+
+custom_dimension!(pub FirstJobArrivalFloor typeof Timestamp);
 
 /// Updates route schedule data.
 pub fn update_route_schedule(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, transport: &dyn TransportCost) {
@@ -32,6 +34,8 @@ pub fn update_route_departure(
 }
 
 fn update_schedules(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, transport: &dyn TransportCost) {
+    apply_first_job_arrival_floor(route_ctx, transport);
+
     let init = {
         let start = route_ctx.route().tour.start().unwrap();
         (start.place.location, start.schedule.departure)
@@ -51,6 +55,30 @@ fn update_schedules(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, t
 
         (location, departure)
     });
+}
+
+/// When an actor has `FirstJobArrivalFloor` set, the shift bounds apply to the first job's
+/// arrival rather than to the depot departure. Pre-adjust the depot departure so that the
+/// first job is reached at the floor (or later, if travel from the depot makes that impossible).
+fn apply_first_job_arrival_floor(route_ctx: &mut RouteContext, transport: &dyn TransportCost) {
+    let Some(floor) = route_ctx.route().actor.vehicle.dimens.get_first_job_arrival_floor() else {
+        return;
+    };
+    let (start_location, start_departure) = {
+        let start = route_ctx.route().tour.start().unwrap();
+        (start.place.location, start.schedule.departure)
+    };
+    let Some(first_stop) = route_ctx.route().tour.get(1) else { return };
+    if first_stop.job.is_none() {
+        return;
+    }
+    let first_location = first_stop.place.location;
+    let travel =
+        transport.duration(route_ctx.route(), start_location, first_location, TravelTime::Arrival(*floor));
+    let target_departure = *floor - travel;
+    if target_departure > start_departure {
+        route_ctx.route_mut().tour.get_mut(0).unwrap().schedule.departure = target_departure;
+    }
 }
 
 fn update_states(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, transport: &dyn TransportCost) {
