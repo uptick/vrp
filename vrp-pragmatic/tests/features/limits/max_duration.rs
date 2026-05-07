@@ -182,6 +182,54 @@ fn allow_out_of_hours_depot_travel_moves_shift_bounds_onto_first_and_last_jobs()
 }
 
 #[test]
+fn allow_out_of_hours_depot_travel_still_enforces_shift_start_latest() {
+    // Depot at (0,0), job at (200,0) → 200 units of travel.
+    // Shift start window [100, 150]. Even leaving the depot at t=0, first-job arrival
+    // would be t=200, which exceeds start.latest=150. The flag relaxes the depot-start
+    // window but the travel-limit constraint must still reject this insertion.
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![create_delivery_job_with_duration("job1", (200., 0.), 5.)],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                shifts: vec![VehicleShift {
+                    start: ShiftStart {
+                        earliest: format_time(100.),
+                        latest: Some(format_time(150.)),
+                        location: (0., 0.).to_loc(),
+                    },
+                    end: Some(ShiftEnd {
+                        earliest: None,
+                        latest: format_time(1000.),
+                        location: (0., 0.).to_loc(),
+                    }),
+                    breaks: None,
+                    reloads: None,
+                    recharges: None,
+                }],
+                limits: Some(VehicleLimits {
+                    max_distance: None,
+                    max_duration: None,
+                    tour_size: None,
+                    allow_out_of_hours_depot_travel: Some(true),
+                }),
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert_eq!(solution.unassigned.iter().flatten().count(), 1);
+    assert!(solution.tours.is_empty(), "expected no tours since the only job cannot be assigned");
+}
+
+#[test]
 fn can_serve_job_when_it_starts_late() {
     let problem = Problem {
         plan: Plan {

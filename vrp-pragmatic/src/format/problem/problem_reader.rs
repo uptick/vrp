@@ -150,11 +150,11 @@ fn get_problem_properties(api_problem: &ApiProblem, matrices: &[Matrix]) -> Prob
     let has_tour_size_limits =
         api_problem.fleet.vehicles.iter().any(|v| v.limits.as_ref().is_some_and(|l| l.tour_size.is_some()));
 
-    let has_tour_travel_limits = api_problem
-        .fleet
-        .vehicles
-        .iter()
-        .any(|v| v.limits.as_ref().is_some_and(|l| l.max_duration.or(l.max_distance).is_some()));
+    let has_tour_travel_limits = api_problem.fleet.vehicles.iter().any(|v| {
+        v.limits.as_ref().is_some_and(|l| {
+            l.max_duration.or(l.max_distance).is_some() || l.allow_out_of_hours_depot_travel.unwrap_or(false)
+        })
+    });
 
     ProblemProperties {
         has_multi_dimen_capacity,
