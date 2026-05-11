@@ -59,11 +59,20 @@ fn check_shift_limits(context: &CheckerContext) -> GenericResult<()> {
 fn check_shift_time(context: &CheckerContext) -> GenericResult<()> {
     context.solution.tours.iter().try_for_each::<_, GenericResult<_>>(|tour| {
         let vehicle = context.get_vehicle(&tour.vehicle_id)?;
+        let allow_out_of_hours_depot_travel =
+            vehicle.limits.as_ref().and_then(|limits| limits.allow_out_of_hours_depot_travel).unwrap_or(false);
 
         let (start, end) = tour.stops.first().zip(tour.stops.last()).ok_or("empty tour")?;
 
-        let departure = parse_time(&start.schedule().departure);
-        let arrival = parse_time(&end.schedule().arrival);
+        // With `allow_out_of_hours_depot_travel`, the shift start applies to the first-job arrival
+        // rather than to the depot departure. The end side is NOT relaxed (depot return must
+        // still sit within the shift end).
+        let effective_start = if allow_out_of_hours_depot_travel && tour.stops.len() > 2 {
+            parse_time(&tour.stops[1].schedule().arrival)
+        } else {
+            parse_time(&start.schedule().departure)
+        };
+        let effective_end = parse_time(&end.schedule().arrival);
 
         let has_match = vehicle
             .shifts
@@ -74,7 +83,7 @@ fn check_shift_time(context: &CheckerContext) -> GenericResult<()> {
 
                 (start, end)
             })
-            .any(|(start, end)| departure >= start && arrival <= end);
+            .any(|(start, end)| effective_start >= start && effective_end <= end);
 
         if !has_match {
             Err(format!(

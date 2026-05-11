@@ -4,7 +4,7 @@ use vrp_core::algorithms::clustering::kmedoids::create_hierarchical_kmedoids;
 use vrp_core::construction::clustering::vicinity::ClusterInfoDimension;
 use vrp_core::construction::enablers::FeatureCombinator;
 use vrp_core::construction::features::*;
-use vrp_core::models::common::{Demand, LoadOps, MultiDimLoad, SingleDimLoad};
+use vrp_core::models::common::{Demand, Duration, LoadOps, MultiDimLoad, SingleDimLoad};
 use vrp_core::models::problem::{Actor, Single, TransportCost};
 use vrp_core::models::solution::Route;
 use vrp_core::models::{Feature, FeatureObjective, GoalBuilder, GoalContext, GoalContextBuilder};
@@ -439,6 +439,9 @@ fn get_tour_limit_feature(
         })
     };
 
+    let shift_start_latest_fn: TravelLimitFn<Duration> =
+        Arc::new(|actor: &Actor| actor.vehicle.dimens.get_shift_start_latest().copied());
+
     create_travel_limit_feature(
         name,
         transport,
@@ -447,6 +450,7 @@ fn get_tour_limit_feature(
         DURATION_LIMIT_CONSTRAINT_CODE,
         get_limit(distances),
         get_limit(durations),
+        shift_start_latest_fn,
     )
 }
 

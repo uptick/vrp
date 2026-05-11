@@ -20,3 +20,5 @@ custom_dimension!(pub JobValue typeof Float);
 custom_dimension!(pub JobType typeof String);
 
 custom_dimension!(pub BreakPolicy typeof BreakPolicy);
+
+custom_dimension!(pub ShiftStartLatest typeof Float);

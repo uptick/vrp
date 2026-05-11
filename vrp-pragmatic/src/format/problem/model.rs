@@ -356,6 +356,11 @@ pub struct VehicleLimits {
     /// No job activities restrictions when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tour_size: Option<usize>,
+
+    /// When true, the shift duration starts at the first job arrival rather than
+    /// at depot departure. Travel from depot to first job does not count against maxDuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_out_of_hours_depot_travel: Option<bool>,
 }
 
 /// Vehicle optional break time variant.

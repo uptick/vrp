@@ -101,6 +101,7 @@ mod traveling {
             DURATION_CODE,
             tour_distance_limit,
             tour_duration_limit,
+            Arc::new(|_| None),
         )
         .unwrap();
 
