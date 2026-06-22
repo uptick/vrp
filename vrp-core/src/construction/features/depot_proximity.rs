@@ -20,6 +20,10 @@
 //!
 //! Objective only — no constraint or state.
 
+#[cfg(test)]
+#[path = "../../../tests/unit/construction/features/depot_proximity_test.rs"]
+mod depot_proximity_test;
+
 use super::*;
 use crate::models::problem::TransportCost;
 use crate::models::solution::Route;
