@@ -21,6 +21,7 @@ are already published. So, I stick to it for now.
 
 * add an experimental objective
 * add naive implementation of LKH local search
+* add `minimize-depot-travel-time` objective which prefers assigning jobs close (by travel time) to the vehicle's depot (shift start)
 
 
 ## [1.25.0] 2024-11-10

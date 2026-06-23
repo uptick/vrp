@@ -17,6 +17,9 @@ pub use self::capacity::{CapacityFeatureBuilder, JobDemandDimension, VehicleCapa
 mod compatibility;
 pub use self::compatibility::{JobCompatibilityDimension, create_compatibility_feature};
 
+mod depot_proximity;
+pub use self::depot_proximity::*;
+
 mod fast_service;
 pub use self::fast_service::FastServiceFeatureBuilder;
 

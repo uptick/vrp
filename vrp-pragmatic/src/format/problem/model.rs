@@ -589,6 +589,18 @@ pub enum Objective {
     /// An objective to prefer jobs to be served as soon as possible.
     FastService,
 
+    /// An objective to prefer assigning jobs close (by travel time) to the vehicle's depot
+    /// (shift start).
+    MinimizeDepotTravelTime {
+        /// Optional "depot radius": the cost of leaving a job unassigned, in travel-duration
+        /// units. When set, the objective drives proximity-gated assignment — jobs within `cap`
+        /// travel of a depot are assigned (nearest first) and farther jobs are dropped — and is
+        /// safe to use as a dominant tier. When omitted, it is a soft penalty over assigned jobs
+        /// only, intended for use inside a `weighted-sum` tier.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cap: Option<Float>,
+    },
+
     /// An objective to consider hierarchy of areas while serving jobs.
     HierarchicalAreas {
         /// Number of levels in area hierarchy.

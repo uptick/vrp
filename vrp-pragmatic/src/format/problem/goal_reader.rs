@@ -199,6 +199,12 @@ fn get_objective_feature_layer(
         }
         Objective::TourOrder => create_tour_order_soft_feature("tour_order", get_tour_order_fn()),
         Objective::FastService => get_fast_service_feature("fast_service", blocks),
+        Objective::MinimizeDepotTravelTime { cap } => create_minimize_depot_travel_time_feature(
+            "min_depot_travel",
+            blocks.transport.clone(),
+            Arc::new(|duration| duration), // linear penalty; see DepotPenaltyFn for the non-linear seam
+            *cap,
+        ),
         Objective::HierarchicalAreas { levels } => get_hierarchical_areas_feature(blocks, *levels),
         Objective::MultiObjective { objectives, strategy: composition_type } => {
             let features = objectives
