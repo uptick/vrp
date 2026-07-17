@@ -229,6 +229,77 @@ fn allow_out_of_hours_depot_travel_still_enforces_shift_start_latest() {
     assert!(solution.tours.is_empty(), "expected no tours since the only job cannot be assigned");
 }
 
+fn create_single_long_job_problem(allow_out_of_hours_depot_travel: bool) -> Problem {
+    // Depot at (0,0), job at (10,0) → 10 units of travel each way.
+    // Shift window is [100, 200] (span 100). The job's service duration is 150, which
+    // exceeds the entire shift span on its own — it cannot fit between the shift start
+    // and shift end regardless of when the depot is left. This mirrors "a 12h task on a
+    // 9-5 (8h) shift": it must never be assigned, with OR without the flag.
+    Problem {
+        plan: Plan {
+            jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 150.)],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                shifts: vec![VehicleShift {
+                    start: ShiftStart {
+                        earliest: format_time(100.),
+                        latest: None,
+                        location: (0., 0.).to_loc(),
+                    },
+                    end: Some(ShiftEnd {
+                        earliest: None,
+                        latest: format_time(200.),
+                        location: (0., 0.).to_loc(),
+                    }),
+                    breaks: None,
+                    reloads: None,
+                    recharges: None,
+                }],
+                limits: Some(VehicleLimits {
+                    max_distance: None,
+                    max_duration: None,
+                    tour_size: None,
+                    allow_out_of_hours_depot_travel: Some(allow_out_of_hours_depot_travel),
+                }),
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    }
+}
+
+// Regression test for the `allow_out_of_hours_depot_travel` over-long-job bug.
+//
+// A job whose service duration exceeds the whole shift span cannot be served regardless of the
+// flag: out-of-hours travel only lets the depot legs spill outside the shift, the work itself
+// must still fit inside the shift window. Previously the flag relaxed the depot-start window to
+// `{earliest: None, latest: None}` (→ `Actor.detail.time.start = 0`), so the transport
+// time-window constraint evaluated insertions against a `[0, end.latest]` operating window and
+// scheduled over-long jobs anyway. The fix floors the first-job arrival to the
+// `FirstJobArrivalFloor` inside the feasibility check, so the shift-end overrun is detected.
+#[test]
+fn allow_out_of_hours_depot_travel_rejects_job_longer_than_shift() {
+    // The over-long (150-unit) job cannot fit in the 100-unit shift with the flag OFF or ON.
+    for allow_out_of_hours_depot_travel in [false, true] {
+        let problem = create_single_long_job_problem(allow_out_of_hours_depot_travel);
+        let matrix = create_matrix_from_problem(&problem);
+        let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+        assert_eq!(
+            solution.unassigned.iter().flatten().count(),
+            1,
+            "over-long job must be unassigned (allow_out_of_hours_depot_travel={allow_out_of_hours_depot_travel})"
+        );
+        assert!(
+            solution.tours.is_empty(),
+            "no tour should be produced (allow_out_of_hours_depot_travel={allow_out_of_hours_depot_travel})"
+        );
+    }
+}
+
 #[test]
 fn can_serve_job_when_it_starts_late() {
     let problem = Problem {
