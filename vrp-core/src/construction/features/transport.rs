@@ -221,6 +221,18 @@ impl TransportConstraint {
                 TravelTime::Departure(departure),
             );
 
+        // When `prev` is the depot and the actor declares a first-job arrival floor
+        // (`allow_out_of_hours_depot_travel`), it may leave the depot out of hours but cannot begin
+        // serving the first job before the floor. The depot-start window is relaxed to allow the
+        // early departure, so `departure` here can be earlier than the shift start; floor the
+        // arrival to match the schedule computed by `apply_first_job_arrival_floor`. Without this,
+        // the shift-end feasibility check below sees an arrival that is too early and lets jobs that
+        // overrun the shift slip through.
+        let arr_time_at_target = match route.actor.vehicle.dimens.get_first_job_arrival_floor() {
+            Some(floor) if prev.job.is_none() => arr_time_at_target.max(*floor),
+            _ => arr_time_at_target,
+        };
+
         let latest_departure_at_target = latest_arr_time_at_next
             - self.transport.duration(
                 route,
