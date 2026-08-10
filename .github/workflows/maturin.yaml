@@ -3,6 +3,10 @@ name: Publish Release
 on:
   workflow_dispatch:
   push:
+    # Branches only. A tag push and its release event would otherwise start two
+    # concurrent runs that race to upload the same release assets.
+    branches:
+      - "**"
   release:
     types:
       - released
@@ -10,6 +14,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   linux:
@@ -28,13 +36,17 @@ jobs:
         with:
           python-version: "3.13"
 
+      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
+        with:
+          python-version: "3.14"
+
       - name: Build wheels
         uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # ratchet:PyO3/maturin-action@v1
         with:
           working-directory: ./vrp-cli
           target: ${{ matrix.target }}
           sccache: "true"
-          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13
+          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13 -i 3.14
           manylinux: auto
 
       - name: Upload wheels
@@ -61,12 +73,17 @@ jobs:
           python-version: "3.13"
           architecture: "arm64"
 
+      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
+        with:
+          python-version: "3.14"
+          architecture: "arm64"
+
       - name: Build wheels
         uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # ratchet:PyO3/maturin-action@v1
         with:
           working-directory: ./vrp-cli
           target: ${{ matrix.target }}
-          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13
+          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13 -i 3.14
           sccache: "true"
 
       - name: Upload wheels
@@ -77,7 +94,9 @@ jobs:
 
   pypi-publish:
     name: Publish artifacts to Uptick's Pypi repo
-    if: startsWith(github.ref, 'refs/tags/')
+    # Manual runs must be dispatched from a tag, so the wheels always match a
+    # released version.
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/'))
     permissions:
       id-token: write
       contents: write
@@ -107,7 +126,9 @@ jobs:
           uvx s3pypi@2.0.1 upload dist/* --bucket s3pypi-610829907584-us-east-1
   gh-publish:
     name: Publish artifacts to GH
-    if: startsWith(github.ref, 'refs/tags/')
+    # Same rule. action-gh-release falls back to github.ref, so a branch dispatch
+    # would create a release named after the branch.
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/'))
     permissions:
       contents: write
     needs: [linux, macos]
