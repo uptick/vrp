@@ -31,6 +31,38 @@ fn create_detail(
     }
 }
 
+parameterized_test! {can_place_reserved_time, (arrival, service, reserved, expected), {
+    let reserved = ReservedTimeWindow {
+        time: TimeWindow::new(reserved.0, reserved.1),
+        duration: reserved.2,
+    };
+    can_place_reserved_time_impl(arrival, service, reserved, expected);
+}}
+
+can_place_reserved_time! {
+    case01_due_while_waiting: (10., ((20., 100.), 10.), (10., 15., 5.),
+        Some(ReservedTimePlacement::BeforeService { start: 10., service_start: 20. })),
+    case02_due_on_arrival_delays_service: (10., ((0., 100.), 10.), (10., 20., 5.),
+        Some(ReservedTimePlacement::BeforeService { start: 10., service_start: 15. })),
+    case03_due_while_serving_is_deferred: (10., ((0., 100.), 10.), (15., 25., 5.),
+        Some(ReservedTimePlacement::AfterService { start: 20. })),
+    case04_due_while_serving_misses_deadline: (10., ((0., 100.), 10.), (15., 18., 5.), None),
+    case05_delayed_service_misses_time_window: (10., ((0., 12.), 10.), (10., 20., 5.), None),
+}
+
+fn can_place_reserved_time_impl(
+    arrival: Timestamp,
+    service: ((Timestamp, Timestamp), Duration),
+    reserved: ReservedTimeWindow,
+    expected: Option<ReservedTimePlacement>,
+) {
+    let ((start, end), duration) = service;
+
+    let result = place_reserved_time(arrival, &TimeWindow::new(start, end), duration, &reserved);
+
+    assert_eq!(result, expected);
+}
+
 parameterized_test! {can_search_for_reserved_time, (times, tests), {
     can_search_for_reserved_time_impl(times, tests);
 }}

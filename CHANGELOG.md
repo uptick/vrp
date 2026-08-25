@@ -10,6 +10,10 @@ are already published. So, I stick to it for now.
 
 ### Changed
 
+* a required break is no longer taken in the middle of a job. It is now taken at the first moment it is
+  due without interrupting work: while the vehicle is idle at a stop, on the road, or once the service in
+  progress is finished. Its `earliest` is honoured as a floor, and a job which cannot be served around the
+  break within its time window is rejected instead
 * migrate to rust 2024 edition
 * improved remedian algorithm
 * separate calculations for distance/duration from cost minimization

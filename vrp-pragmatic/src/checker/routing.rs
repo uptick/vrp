@@ -52,17 +52,12 @@ fn check_routing_rules(context: &CheckerContext) -> GenericResult<()> {
                         (distance, duration, to.distance)
                     }
                     (prev, Stop::Transit(transit)) => {
-                        let prev_departure = parse_time(&prev.schedule().departure);
-                        let next_arrival = parse_time(&transit.time.arrival);
-                        // NOTE an edge case: duration of break will be counted in transit stop
-                        let duration = if next_arrival == prev_departure {
-                            0.
-                        } else {
-                            parse_time(&transit.time.departure) - next_arrival
-                        };
+                        // NOTE a break can be taken at any moment of the leg, so the travel time before
+                        //      it is not known here: the whole leg is validated on its second half
+                        let duration = parse_time(&transit.time.arrival) - parse_time(&prev.schedule().departure);
                         (0_i64, duration as i64, total_distance)
                     }
-                    (Stop::Transit(_), Stop::Point(to)) => {
+                    (Stop::Transit(transit), Stop::Point(to)) => {
                         assert!(leg_idx > 0);
                         let from = tour
                             .stops
@@ -71,7 +66,9 @@ fn check_routing_rules(context: &CheckerContext) -> GenericResult<()> {
                             .as_point()
                             .expect("two consistent transit stops are not supported");
                         let (distance, duration) = get_matrix_data(from, to)?;
-                        (distance, duration, to.distance)
+                        // NOTE exclude the part of the leg which was already travelled before the break
+                        let travelled = parse_time(&transit.time.arrival) - parse_time(&from.time.departure);
+                        (distance, duration - travelled as i64, to.distance)
                     }
                 };
 

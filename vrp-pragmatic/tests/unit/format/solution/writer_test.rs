@@ -9,6 +9,7 @@ use vrp_core::models::examples::create_example_problem;
 
 type DomainProblem = vrp_core::models::Problem;
 type DomainActivity = vrp_core::models::solution::Activity;
+type DomainPlace = vrp_core::models::solution::Place;
 type DomainCommute = vrp_core::models::solution::Commute;
 type DomainCommuteInfo = vrp_core::models::solution::CommuteInfo;
 type DomainSchedule = vrp_core::models::common::Schedule;
@@ -190,12 +191,16 @@ fn can_merge_activities_with_commute_in_one_stop_impl(
 fn can_merge_required_break_on_stop_arrival_time_properly() {
     let (problem, mut coord_index) = create_test_problem_and_coord_index();
     coord_index.add(&Location::Reference { index: 1 });
+    // NOTE the break becomes due at 4, when the vehicle arrives, so it is taken before the service:
+    //      the vehicle rests from 4 till 5, serves the job from 5 till 6 and departs at 6
+    let activity = create_activity_with_job_at_location(create_single(&format!("job{}", 1)), 1);
     let activities = vec![DomainActivity {
-        schedule: DomainSchedule { arrival: 4., departure: 5. },
-        ..create_activity_with_job_at_location(create_single(&format!("job{}", 1)), 1)
+        schedule: DomainSchedule { arrival: 4., departure: 6. },
+        place: DomainPlace { duration: 1., ..activity.place.clone() },
+        ..activity
     }];
     let mut route = create_route_with_activities(&problem.fleet, "v1", activities);
-    route.tour.all_activities_mut().last().unwrap().schedule.arrival = 6.;
+    route.tour.all_activities_mut().last().unwrap().schedule.arrival = 7.;
     let reserved_times_index = vec![(
         route.actor.clone(),
         vec![ReservedTimeSpan { time: TimeSpan::Window(TimeWindow::new(4., 4.)), duration: 1. }],

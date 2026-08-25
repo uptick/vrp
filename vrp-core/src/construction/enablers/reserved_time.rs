@@ -35,6 +35,71 @@ pub struct ReservedTimeWindow {
     pub duration: Duration,
 }
 
+/// Specifies where a reserved time is taken relative to an activity's service.
+///
+/// A reserved time never interrupts the service: it is taken either before the work starts or once
+/// it is finished.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ReservedTimePlacement {
+    /// The reserved time is taken before the service starts, delaying the work.
+    BeforeService {
+        /// A time when the reserved time starts.
+        start: Timestamp,
+        /// A time when the service starts, once the reserved time is over.
+        service_start: Timestamp,
+    },
+    /// The reserved time is taken once the service is finished, delaying the departure.
+    AfterService {
+        /// A time when the reserved time starts, which is the moment the service ends.
+        start: Timestamp,
+    },
+}
+
+impl ReservedTimePlacement {
+    /// Returns a time when the reserved time starts.
+    pub fn start(&self) -> Timestamp {
+        match self {
+            ReservedTimePlacement::BeforeService { start, .. } | ReservedTimePlacement::AfterService { start } => {
+                *start
+            }
+        }
+    }
+}
+
+/// Places a reserved time around an activity's service, so that the work is never interrupted by it.
+///
+/// The reserved time is taken as soon as it is due: while the vehicle is still idle at the activity,
+/// if the work has not started yet, or right after the work is finished otherwise. Returns `None`
+/// when it cannot be taken within its time window without interrupting the service, which makes the
+/// activity infeasible for the actor.
+pub fn place_reserved_time(
+    arrival: Timestamp,
+    service_time: &TimeWindow,
+    service_duration: Duration,
+    reserved_time: &ReservedTimeWindow,
+) -> Option<ReservedTimePlacement> {
+    let service_start = arrival.max(service_time.start);
+    let (due, deadline) = (reserved_time.time.start, reserved_time.time.end);
+
+    if due <= service_start {
+        // the work has not started yet: take the reserved time now, delaying the service if needed
+        let start = arrival.max(due);
+        let service_start = service_start.max(start + reserved_time.duration);
+
+        // NOTE: do not allow to start work after the activity's time window is over
+        if start > deadline || service_start > service_time.end {
+            None
+        } else {
+            Some(ReservedTimePlacement::BeforeService { start, service_start })
+        }
+    } else {
+        // the work is already in progress: defer the reserved time until it is finished
+        let start = service_start + service_duration;
+
+        if start > deadline { None } else { Some(ReservedTimePlacement::AfterService { start }) }
+    }
+}
+
 /// Specifies reserved time index type.
 pub type ReservedTimesIndex = HashMap<Arc<Actor>, Vec<ReservedTimeSpan>>;
 
@@ -61,35 +126,26 @@ impl ActivityCost for DynamicActivityCost {
         activity: &Activity,
         arrival: Timestamp,
     ) -> ControlFlow<Timestamp, Timestamp> {
-        let activity_start = arrival.max(activity.place.time.start);
-        let departure = activity_start + activity.place.duration;
+        let service_start = arrival.max(activity.place.time.start);
+        let departure = service_start + activity.place.duration;
         let schedule = TimeWindow::new(arrival, departure);
 
         (self.reserved_times_fn)(route, &schedule).map_or(ControlFlow::Continue(departure), |reserved_time| {
-            // NOTE we ignore reserved_time.time.start and consider the latest possible time only
-            let reserved_tw = &reserved_time.time;
-            let reserved_tw = TimeWindow::new(reserved_tw.end, reserved_tw.end + reserved_time.duration);
+            let place = &activity.place;
 
-            assert!(reserved_tw.intersects(&schedule));
-
-            let activity_tw = &activity.place.time;
-
-            let extra_duration = if reserved_tw.start < activity_tw.start {
-                let waiting_time = TimeWindow::new(arrival, activity_tw.start);
-                let overlapping = waiting_time.overlapping(&reserved_tw).map(|tw| tw.duration()).unwrap_or(0.);
-
-                reserved_time.duration - overlapping
-            } else {
-                reserved_time.duration
-            };
-
-            // NOTE: do not allow to start or restart work after break finished
-            if activity_start + extra_duration > activity.place.time.end {
+            match place_reserved_time(arrival, &place.time, place.duration, &reserved_time) {
+                Some(ReservedTimePlacement::BeforeService { service_start, .. }) => {
+                    ControlFlow::Continue(service_start + place.duration)
+                }
+                Some(ReservedTimePlacement::AfterService { start }) => {
+                    ControlFlow::Continue(start + reserved_time.duration)
+                }
+                // NOTE: the reserved time cannot be taken within its time window without interrupting
+                //       the service, so the activity is not feasible here. Still report a schedule with
+                //       the same total duration for the callers which ignore the violation.
                 // TODO this branch is the reason why departure rescheduling is disabled.
                 //      theoretically, rescheduling should be aware somehow about dynamic costs
-                ControlFlow::Break(departure + extra_duration)
-            } else {
-                ControlFlow::Continue(departure + extra_duration)
+                None => ControlFlow::Break(departure + reserved_time.duration),
             }
         })
     }
@@ -235,8 +291,8 @@ pub(crate) fn create_reserved_times_fn(
                     .into_iter()
                     .map(|span| {
                         let start = match &span.time {
-                            TimeSpan::Window(time) => time.end,
-                            TimeSpan::Offset(time) => time.end,
+                            TimeSpan::Window(time) => time.start,
+                            TimeSpan::Offset(time) => time.start,
                         };
 
                         (start as u64, span)
@@ -251,8 +307,10 @@ pub(crate) fn create_reserved_times_fn(
         },
     )?;
 
-    // NOTE: this function considers only latest time from reserved time
-    //       reserved_time.time.start is ignored and should be handled by post processing
+    // NOTE: a reserved time is owned by the activity or travel leg which is in progress at the moment
+    //       it becomes due, so the search is driven by reserved_time.time.start. As the reserved time
+    //       is inserted into the timeline, everything after the owner is shifted by its duration, which
+    //       keeps the exclusive intersection below matching exactly one interval.
     Ok(Arc::new(move |route: &Route, time_window: &TimeWindow| {
         reserved_times.get(&route.actor).and_then(|(indices, intervals)| {
             let offset = route.tour.start().map(|a| a.schedule.departure).unwrap_or(0.);
@@ -271,8 +329,8 @@ pub(crate) fn create_reserved_times_fn(
                     .find(|reserved_time| {
                         reserved_time.is_some_and(|reserved_time| {
                             let (reserved_start, reserved_end) = match &reserved_time.time {
-                                TimeSpan::Offset(to) => (to.end, to.end + reserved_time.duration),
-                                TimeSpan::Window(tw) => (tw.end, tw.end + reserved_time.duration),
+                                TimeSpan::Offset(to) => (to.start, to.start + reserved_time.duration),
+                                TimeSpan::Window(tw) => (tw.start, tw.start + reserved_time.duration),
                             };
 
                             // NOTE use exclusive intersection

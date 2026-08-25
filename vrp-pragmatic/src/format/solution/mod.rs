@@ -20,7 +20,7 @@ mod solution_writer;
 pub(crate) use self::solution_writer::create_solution;
 
 use super::*;
-use crate::{format_time, parse_time};
+use crate::format_time;
 use std::io::{BufWriter, Write};
 use vrp_core::prelude::GenericError;
 
