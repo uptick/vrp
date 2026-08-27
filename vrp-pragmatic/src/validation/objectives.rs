@@ -166,6 +166,39 @@ fn check_e1607_jobs_with_value_but_no_objective(
     }
 }
 
+/// Checks that an objective forcing assignment is ranked above `prefer-early-tours`.
+///
+/// `prefer-early-tours` scores assigned jobs only, so with nothing above it to reward assignment
+/// the cheapest solution is the empty one. `minimize-unassigned` guards that outright;
+/// `maximize-value` guards every job that carries a value, which is why both are accepted here.
+/// The guard has to be *ranked higher*: objectives resolve layer by layer and the first layer that
+/// differs decides, so a guard below this objective never gets consulted.
+fn check_e1608_unguarded_prefer_early_tours(objectives: &[&Objective]) -> Result<(), FormatError> {
+    let tier_of = |predicate: fn(&Objective) -> bool| {
+        objectives.iter().position(|objective| match objective {
+            MultiObjective { objectives, .. } => objectives.iter().any(predicate),
+            objective => predicate(objective),
+        })
+    };
+
+    let Some(early_tours_tier) = tier_of(|objective| matches!(objective, PreferEarlyTours)) else {
+        return Ok(());
+    };
+    let guard_tier = tier_of(|objective| matches!(objective, MinimizeUnassigned { .. } | MaximizeValue { .. }));
+
+    if guard_tier.is_some_and(|guard_tier| guard_tier < early_tours_tier) {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1608".to_string(),
+            "missing an objective which forces assignment above 'prefer-early-tours'".to_string(),
+            "add 'minimize-unassigned' or 'maximize-value' before 'prefer-early-tours': on its own it \
+             scores assigned jobs only, so assigning nothing wins"
+                .to_string(),
+        ))
+    }
+}
+
 fn get_objectives<'a>(ctx: &'a ValidationContext) -> Option<Vec<&'a Objective>> {
     ctx.problem.objectives.as_ref().map(|objectives| objectives.iter().collect())
 }
@@ -188,6 +221,7 @@ pub fn validate_objectives(ctx: &ValidationContext) -> Result<(), MultiFormatErr
             check_e1605_check_positive_value_and_order(ctx),
             check_e1606_check_multiple_cost_objectives(&objectives),
             check_e1607_jobs_with_value_but_no_objective(ctx, &objectives),
+            check_e1608_unguarded_prefer_early_tours(&objectives),
         ])
         .map_err(From::from)
     } else {

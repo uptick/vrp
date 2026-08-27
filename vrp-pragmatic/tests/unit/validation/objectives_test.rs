@@ -207,3 +207,51 @@ fn can_detect_missing_value_objective_impl(objectives: Option<Vec<Objective>>, e
 
     assert_eq!(result.err().map(|e| e.code), expected);
 }
+
+parameterized_test! {can_detect_unguarded_prefer_early_tours, (objectives, expected), {
+    can_detect_unguarded_prefer_early_tours_impl(objectives, expected);
+}}
+
+can_detect_unguarded_prefer_early_tours! {
+    case01_no_guard: (vec![PreferEarlyTours, MinimizeTours, MinimizeDuration], Some("E1608".to_string())),
+    case02_guarded_by_unassigned: (
+        vec![MinimizeUnassigned { breaks: None }, PreferEarlyTours, MinimizeDuration], None),
+    case03_guarded_by_value: (
+        vec![MaximizeValue { breaks: None }, PreferEarlyTours, MinimizeDuration], None),
+    // a guard ranked below never gets consulted: the first differing layer decides
+    case04_guard_below_is_not_a_guard: (
+        vec![PreferEarlyTours, MinimizeUnassigned { breaks: None }, MinimizeDuration],
+        Some("E1608".to_string())),
+    // the same tier is not "above": neither outranks the other inside one layer
+    case05_guard_in_same_tier: (
+        vec![
+            MultiObjective {
+                strategy: MultiStrategy::Sum,
+                objectives: vec![MinimizeUnassigned { breaks: None }, PreferEarlyTours],
+            },
+            MinimizeDuration,
+        ],
+        Some("E1608".to_string())),
+    case06_guard_in_higher_tier: (
+        vec![
+            MultiObjective {
+                strategy: MultiStrategy::Sum,
+                objectives: vec![MinimizeUnassigned { breaks: None }, MinimizeTours],
+            },
+            PreferEarlyTours,
+            MinimizeDuration,
+        ],
+        None),
+    case07_objective_absent: (vec![MinimizeTours, MinimizeDuration], None),
+}
+
+fn can_detect_unguarded_prefer_early_tours_impl(objectives: Vec<Objective>, expected: Option<String>) {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+    let objectives = get_objectives(&ctx).unwrap();
+
+    let result = check_e1608_unguarded_prefer_early_tours(&objectives);
+
+    assert_eq!(result.err().map(|err| err.code), expected);
+}
