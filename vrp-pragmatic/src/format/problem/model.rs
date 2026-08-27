@@ -565,6 +565,18 @@ pub enum Objective {
     /// An objective to minimize sum of arrival times from all routes.
     MinimizeArrivalTime,
 
+    /// An objective to schedule work in the earliest shifts of the planning period, so that a plan
+    /// with more vehicle days than work fills the first days and leaves the last ones empty.
+    ///
+    /// Scores each shift in use by how long after the fleet's earliest shift it starts. Only
+    /// opening a shift costs anything, so it says nothing about job order or timing within a day
+    /// and does not override cost-based intra-day decisions.
+    ///
+    /// Its order against `minimize-tours` is a real choice: above it, the earliest shifts win and
+    /// may cost extra vehicle days; below it, tour count wins and work can land later. See the
+    /// `early_tours` feature in `vrp-core` for the mechanism and the measured trade-offs.
+    PreferEarlyTours,
+
     /// An objective to balance max load across all tours.
     BalanceMaxLoad,
 

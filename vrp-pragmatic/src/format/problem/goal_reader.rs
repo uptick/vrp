@@ -167,6 +167,9 @@ fn get_objective_feature_layer(
             .build(),
 
         Objective::MinimizeArrivalTime => create_minimize_arrival_time_feature("min_arrival_time"),
+        Objective::PreferEarlyTours => {
+            create_prefer_early_tours_feature("prefer_early_tours", get_earliest_shift_start(blocks.fleet.as_ref()))
+        }
         Objective::BalanceMaxLoad => {
             if props.has_multi_dimen_capacity {
                 create_max_load_balanced_feature::<MultiDimLoad>(

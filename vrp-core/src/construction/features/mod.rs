@@ -20,6 +20,9 @@ pub use self::compatibility::{JobCompatibilityDimension, create_compatibility_fe
 mod depot_proximity;
 pub use self::depot_proximity::*;
 
+mod early_tours;
+pub use self::early_tours::*;
+
 mod fast_service;
 pub use self::fast_service::FastServiceFeatureBuilder;
 
