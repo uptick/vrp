@@ -39,6 +39,10 @@
 //!
 //! Objective only - no constraint or state.
 
+#[cfg(test)]
+#[path = "../../../tests/unit/construction/features/early_tours_test.rs"]
+mod early_tours_test;
+
 use super::*;
 use crate::construction::enablers::FirstJobArrivalFloorDimension;
 use crate::models::solution::Route;
