@@ -81,12 +81,12 @@ fn can_assign_break_during_travel() {
 }
 
 #[test]
-fn can_assign_break_during_activity() {
+fn can_defer_break_until_service_is_finished() {
     let is_open = false;
     let problem = create_problem(
         vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
         VehicleBreak::Required {
-            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(10.) },
             duration: 2.,
         },
         is_open,
@@ -95,6 +95,7 @@ fn can_assign_break_during_activity() {
 
     let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
 
+    // NOTE the break becomes due at 7, while the job is served: it waits until the service is over
     assert_eq!(
         solution,
         SolutionBuilder::default()
@@ -115,10 +116,10 @@ fn can_assign_break_during_activity() {
                                 ActivityBuilder::delivery()
                                     .job_id("job1")
                                     .coordinate((5., 0.))
-                                    .time_stamp(5., 10.)
+                                    .time_stamp(5., 8.)
                                     .build()
                             )
-                            .activity(ActivityBuilder::break_type().time_stamp(7., 9.).build())
+                            .activity(ActivityBuilder::break_type().time_stamp(8., 10.).build())
                             .build(),
                         StopBuilder::default()
                             .coordinate((0., 0.))
@@ -131,6 +132,141 @@ fn can_assign_break_during_activity() {
                     .build()
             )
             .build()
+    );
+}
+
+#[test]
+fn can_take_break_before_service_when_it_is_due_on_arrival() {
+    let is_open = false;
+    let problem = create_problem(
+        vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
+        VehicleBreak::Required {
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(7.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    // NOTE the break becomes due when the vehicle arrives, so it is taken before the work starts
+    assert_eq!(
+        solution,
+        SolutionBuilder::default()
+            .tour(
+                TourBuilder::default()
+                    .stops(vec![
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(0., 0.)
+                            .load(vec![1])
+                            .build_departure(),
+                        StopBuilder::default()
+                            .coordinate((5., 0.))
+                            .schedule_stamp(5., 10.)
+                            .load(vec![0])
+                            .distance(5)
+                            .activity(ActivityBuilder::break_type().time_stamp(5., 7.).build())
+                            .activity(
+                                ActivityBuilder::delivery()
+                                    .job_id("job1")
+                                    .coordinate((5., 0.))
+                                    .time_stamp(7., 10.)
+                                    .build()
+                            )
+                            .build(),
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(15., 15.)
+                            .load(vec![0])
+                            .distance(10)
+                            .build_arrival(),
+                    ])
+                    .statistic(StatisticBuilder::default().driving(10).serving(3).break_time(2).build())
+                    .build()
+            )
+            .build()
+    );
+}
+
+#[test]
+fn can_take_break_during_waiting_time() {
+    let is_open = false;
+    let problem = create_problem(
+        vec![create_delivery_job_with_times("job1", (5., 0.), vec![(10, 100)], 2.)],
+        VehicleBreak::Required {
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(8.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    // NOTE the vehicle arrives at 5 and waits till 10 for the job's time window, so the break is taken
+    //      while it is idle and costs nothing: the waiting time is reduced by it instead
+    assert_eq!(
+        solution,
+        SolutionBuilder::default()
+            .tour(
+                TourBuilder::default()
+                    .stops(vec![
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(0., 0.)
+                            .load(vec![1])
+                            .build_departure(),
+                        StopBuilder::default()
+                            .coordinate((5., 0.))
+                            .schedule_stamp(5., 12.)
+                            .load(vec![0])
+                            .distance(5)
+                            .activity(ActivityBuilder::break_type().time_stamp(5., 7.).build())
+                            .activity(
+                                ActivityBuilder::delivery()
+                                    .job_id("job1")
+                                    .coordinate((5., 0.))
+                                    .time_stamp(10., 12.)
+                                    .build()
+                            )
+                            .build(),
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(17., 17.)
+                            .load(vec![0])
+                            .distance(10)
+                            .build_arrival(),
+                    ])
+                    .statistic(StatisticBuilder::default().driving(10).serving(2).waiting(3).break_time(2).build())
+                    .build()
+            )
+            .build()
+    );
+}
+
+#[test]
+fn can_reject_job_which_cannot_be_served_around_break() {
+    let is_open = false;
+    let problem = create_problem(
+        vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
+        VehicleBreak::Required {
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    // NOTE the job is served from 5 till 8, so the break cannot be taken at 7 without interrupting it
+    assert!(solution.tours.is_empty());
+    assert_eq!(solution.unassigned.as_ref().map(|unassigned| unassigned.len()), Some(1));
+    assert_eq!(
+        solution.unassigned.as_ref().and_then(|unassigned| unassigned.first()).map(|job| job.job_id.as_str()),
+        Some("job1")
     );
 }
 
@@ -182,12 +318,12 @@ fn can_handle_required_break_when_its_start_falls_at_activity_end() {
 }
 
 #[test]
-fn can_skip_break_if_it_is_after_start_before_end_range() {
+fn can_skip_break_if_it_becomes_due_after_tour_end() {
     let is_open = true;
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.))],
         VehicleBreak::Required {
-            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(7.) },
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(20.), latest: format_time(22.) },
             duration: 2.,
         },
         is_open,
@@ -200,7 +336,7 @@ fn can_skip_break_if_it_is_after_start_before_end_range() {
 }
 
 #[test]
-fn can_reschedule_break_early_from_transport_to_activity() {
+fn can_take_break_on_the_road_when_it_is_due_while_driving() {
     let is_open = true;
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.)), create_delivery_job("job2", (10., 0.))],
@@ -214,6 +350,7 @@ fn can_reschedule_break_early_from_transport_to_activity() {
 
     let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
 
+    // NOTE the break becomes due at 4, when the vehicle is still on its way to the first job
     assert_eq!(
         solution,
         SolutionBuilder::default()
@@ -225,20 +362,13 @@ fn can_reschedule_break_early_from_transport_to_activity() {
                             .schedule_stamp(0., 0.)
                             .load(vec![2])
                             .build_departure(),
+                        StopBuilder::new_transit().schedule_stamp(4., 6.).load(vec![2]).build_single("break", "break"),
                         StopBuilder::default()
                             .coordinate((5., 0.))
-                            .schedule_stamp(5., 8.)
+                            .schedule_stamp(7., 8.)
                             .load(vec![1])
                             .distance(5)
-                            .activity(
-                                ActivityBuilder::delivery()
-                                    .job_id("job1")
-                                    .coordinate((5., 0.))
-                                    .time_stamp(5., 6.)
-                                    .build()
-                            )
-                            .activity(ActivityBuilder::break_type().time_stamp(6., 8.).build())
-                            .build(),
+                            .build_single("job1", "delivery"),
                         StopBuilder::default()
                             .coordinate((10., 0.))
                             .schedule_stamp(13., 14.)

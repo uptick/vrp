@@ -87,6 +87,14 @@ fn check_break_assignment(context: &CheckerContext) -> GenericResult<()> {
             .map(|stop| parse_time(&stop.schedule().arrival))
             .ok_or_else(|| GenericError::from(format!("cannot get arrival for tour '{}'", tour.vehicle_id)))?;
 
+        // NOTE the tour is over once the vehicle departs from its last stop, which can be later than
+        //      the arrival there, e.g. when a break is taken after the service is finished
+        let tour_end = tour
+            .stops
+            .last()
+            .map(|stop| parse_time(&stop.schedule().departure))
+            .ok_or_else(|| GenericError::from(format!("cannot get tour end for tour '{}'", tour.vehicle_id)))?;
+
         let tour_tw = TimeWindow::new(departure, arrival);
 
         let expected_break_count =
@@ -104,8 +112,10 @@ fn check_break_assignment(context: &CheckerContext) -> GenericResult<()> {
                         }
                     }
                     VehicleBreak::Required { .. } => {
-                        // NOTE: skip break if its end time is after tour end
-                        break_tw.intersects(&tour_tw) && break_tw.end < tour_tw.end
+                        // NOTE: a required break is taken as soon as it becomes due, unless the vehicle
+                        //       is serving a job at that moment, so skip it only when it becomes due
+                        //       after the tour is over
+                        break_tw.intersects(&tour_tw) && break_tw.start < tour_end
                     }
                 };
 
