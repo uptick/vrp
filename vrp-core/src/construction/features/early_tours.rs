@@ -1,12 +1,19 @@
 //! Prefers scheduling work into the earliest shifts of the planning period.
 //!
 //! In a multi-day plan every vehicle day is a separate shift, and every shift is a separate actor
-//! (route). This objective scores each *shift in use* by how far it starts after the earliest shift
+//! (route). This objective scores each shift carrying *new work* by how far it starts after the earliest shift
 //! in the fleet, so the cheapest solution is the one that draws its shifts from the front of the
 //! planning window: given five days of shifts and two days of work, it prefers Mon/Tue over Thu/Fri.
 //!
-//! It is deliberately indifferent to how the work is split across shifts that are already in use -
-//! only opening a shift costs anything. Weighting per job instead would make it pay unbounded
+//! Work the solver could not place is left out: the `existing_jobs` handed in, and any job naming a
+//! vehicle - how a break, reload or recharge generated for one shift is marked. Counting them
+//! inverts the objective: with an appointment pinned to Thursday, a new job there scores
+//! `delay(Thu)` while the same job on Tuesday scores `delay(Tue) + delay(Thu)`, so new work is
+//! herded onto whichever late day the standing commitments opened. Counting a break also prices it
+//! at its shift's delay, and since this objective outranks cost the solver drops it instead.
+//!
+//! It is deliberately indifferent to how the work is split across shifts already being worked -
+//! only the first new job costs anything. Weighting per job instead would make it pay unbounded
 //! travel to drag one more job into an earlier day, since it outranks the cost objective: in a
 //! two-cluster test that cost 42% extra distance to move a single job one day earlier. Where the
 //! work goes among the chosen days is left to the cost objective below.
@@ -26,7 +33,7 @@
 //! (E1608); it does not check which jobs carry a value, so the `total_value` gap stays open.
 //!
 //! Neither this nor `fleet_usage` (minimize tours) can veto the other during insertion - both
-//! charge only when a shift is *opened* - but their relative order still decides the outcome
+//! charge only when a shift is first *worked* - but their relative order still decides the outcome
 //! whenever a later set of shifts would use fewer tours. That needs non-uniform per-day capacity:
 //! with a uniform fleet, k days of work always means the earliest k shifts and the two agree. With
 //! per-day capacities of 4/4/4/4/9 and nine jobs, days 1-3 sum to a delay of 0 + 1 + 2 against day
@@ -46,14 +53,25 @@ mod early_tours_test;
 use super::*;
 use crate::construction::enablers::FirstJobArrivalFloorDimension;
 use crate::models::solution::Route;
+use std::collections::HashSet;
 
 /// Creates a feature which prefers to serve jobs in the earliest shifts of the planning period.
 ///
 /// `origin` is the timestamp that counts as "no delay" - normally the earliest shift start in the
-/// fleet, see [`get_earliest_shift_start`]. Fitness is then the summed delay of the shifts in use,
-/// and a solution which does all its work in the earliest shift scores zero.
-pub fn create_prefer_early_tours_feature(name: &str, origin: Timestamp) -> GenericResult<Feature> {
-    FeatureBuilder::default().with_name(name).with_objective(PreferEarlyToursObjective { origin }).build()
+/// fleet, see [`get_earliest_shift_start`]. Fitness is then the summed delay of the shifts carrying
+/// new work, and a solution which does all such work in the earliest shift scores zero.
+///
+/// `existing_jobs` are those already committed to a shift before the solve, such as the ones a
+/// relation pins to a vehicle: they never make a shift count as worked.
+pub fn create_prefer_early_tours_feature(
+    name: &str,
+    origin: Timestamp,
+    existing_jobs: HashSet<Job>,
+) -> GenericResult<Feature> {
+    FeatureBuilder::default()
+        .with_name(name)
+        .with_objective(PreferEarlyToursObjective { origin, existing_jobs })
+        .build()
 }
 
 /// Returns the static start of an actor's shift.
@@ -73,13 +91,25 @@ pub fn get_earliest_shift_start(fleet: &Fleet) -> Timestamp {
 
 struct PreferEarlyToursObjective {
     origin: Timestamp,
+    existing_jobs: HashSet<Job>,
 }
 
 impl PreferEarlyToursObjective {
-    /// Returns how long after `origin` the route's shift starts: the cost of opening this shift
+    /// Returns how long after `origin` the route's shift starts: the cost of working this shift
     /// rather than one at the front of the planning window.
     fn delay(&self, route: &Route) -> Cost {
         (get_shift_start(route.actor.as_ref()) - self.origin).max(Cost::default())
+    }
+
+    /// Checks whether the shift this job is served on was the solver's to choose: not so for an
+    /// existing job, nor for one naming a vehicle (a break, reload or recharge).
+    fn is_new_work(&self, job: &Job) -> bool {
+        !self.existing_jobs.contains(job) && job.dimens().get_vehicle_id().is_none()
+    }
+
+    /// Checks whether the route already carries new work, and so already pays the shift's delay.
+    fn has_new_work(&self, route: &Route) -> bool {
+        route.tour.jobs().any(|job| self.is_new_work(job))
     }
 }
 
@@ -89,20 +119,20 @@ impl FeatureObjective for PreferEarlyToursObjective {
             .solution
             .routes
             .iter()
-            .filter(|route_ctx| route_ctx.route().tour.has_jobs())
+            .filter(|route_ctx| self.has_new_work(route_ctx.route()))
             .map(|route_ctx| self.delay(route_ctx.route()))
             .sum()
     }
 
     fn estimate(&self, move_ctx: &MoveContext<'_>) -> Cost {
         match move_ctx {
-            // only opening a shift costs its delay; once a shift is in use, moving work into it is
-            // free here, leaving the split between open shifts to the cost objective below
-            MoveContext::Route { route_ctx, .. } => {
-                if route_ctx.route().tour.has_jobs() {
-                    Cost::default()
-                } else {
+            // only the job which starts the shift being worked charges its delay; the split
+            // between shifts already worked is left to the cost objective below
+            MoveContext::Route { route_ctx, job, .. } => {
+                if self.is_new_work(job) && !self.has_new_work(route_ctx.route()) {
                     self.delay(route_ctx.route())
+                } else {
+                    Cost::default()
                 }
             }
             // the objective says nothing about where in the tour the job goes
