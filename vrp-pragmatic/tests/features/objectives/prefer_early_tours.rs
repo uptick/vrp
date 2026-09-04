@@ -88,3 +88,63 @@ fn can_prefer_earliest_shift_with_out_of_hours_depot_travel() {
 fn objectives() -> Option<Vec<Objective>> {
     Some(vec![MinimizeUnassigned { breaks: None }, MinimizeTours, PreferEarlyTours, MinimizeCost])
 }
+
+/// Builds a plan where an appointment pinned by a relation already holds the `late` shift open,
+/// plus one new job which either shift could serve. `late` is parked next to both jobs and the new
+/// job sits where the appointment already is, so joining that shift is free and cost prefers it.
+fn create_problem_with_standing_work() -> Problem {
+    let shift = |earliest: f64, location: (f64, f64), breaks: Option<Vec<VehicleBreak>>| VehicleShift {
+        start: ShiftStart { earliest: format_time(earliest), latest: None, location: location.to_loc() },
+        end: Some(ShiftEnd { earliest: None, latest: format_time(earliest + 1000.), location: location.to_loc() }),
+        breaks,
+        ..create_default_vehicle_shift()
+    };
+    let late_break = VehicleBreak::Optional {
+        time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(10000.), format_time(10100.)]),
+        places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
+        policy: None,
+    };
+
+    Problem {
+        plan: Plan {
+            jobs: vec![create_delivery_job("standing", (100., 0.)), create_delivery_job("new", (100., 0.))],
+            relations: Some(vec![Relation {
+                type_field: RelationType::Any,
+                jobs: to_strings(vec!["standing"]),
+                vehicle_id: "late_1".to_string(),
+                shift_index: None,
+            }]),
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![
+                VehicleType { shifts: vec![shift(0., (0., 0.), None)], ..create_default_vehicle("early") },
+                VehicleType {
+                    shifts: vec![shift(10000., (95., 0.), Some(vec![late_break]))],
+                    ..create_default_vehicle("late")
+                },
+            ],
+            ..create_default_fleet()
+        },
+        // `minimize-tours` is left out on purpose: ranked above, it would consolidate the new job
+        // onto the standing shift to save a tour, whatever this objective prefers
+        objectives: Some(vec![MinimizeUnassigned { breaks: None }, PreferEarlyTours, MinimizeCost]),
+    }
+}
+
+#[test]
+fn can_ignore_a_shift_held_open_by_work_it_cannot_move() {
+    let problem = create_problem_with_standing_work();
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    let get_tour = |vehicle_id: &str| {
+        let tour = solution.tours.iter().find(|tour| tour.vehicle_id == vehicle_id).expect("no tour");
+        get_ids_from_tour(tour)
+    };
+    // the pinned appointment does not make its shift a free home for the new job ...
+    assert_eq!(get_tour("early_1"), vec![vec!["departure"], vec!["new"], vec!["arrival"]]);
+    // ... and the break on that shift is still taken, rather than dropped to avoid paying its delay
+    assert_eq!(get_tour("late_1"), vec![vec!["departure"], vec!["standing", "break"], vec!["arrival"]]);
+}

@@ -1,11 +1,12 @@
 use super::*;
+use std::collections::HashSet;
 use std::ops::Mul;
 use vrp_core::algorithms::clustering::kmedoids::create_hierarchical_kmedoids;
 use vrp_core::construction::clustering::vicinity::ClusterInfoDimension;
 use vrp_core::construction::enablers::FeatureCombinator;
 use vrp_core::construction::features::*;
 use vrp_core::models::common::{Demand, Duration, LoadOps, MultiDimLoad, SingleDimLoad};
-use vrp_core::models::problem::{Actor, Single, TransportCost};
+use vrp_core::models::problem::{Actor, Job as CoreJob, Single, TransportCost};
 use vrp_core::models::solution::Route;
 use vrp_core::models::{Feature, FeatureObjective, GoalBuilder, GoalContext, GoalContextBuilder};
 use vrp_core::rosomaxa::evolution::objectives::dominance_order;
@@ -167,9 +168,11 @@ fn get_objective_feature_layer(
             .build(),
 
         Objective::MinimizeArrivalTime => create_minimize_arrival_time_feature("min_arrival_time"),
-        Objective::PreferEarlyTours => {
-            create_prefer_early_tours_feature("prefer_early_tours", get_earliest_shift_start(blocks.fleet.as_ref()))
-        }
+        Objective::PreferEarlyTours => create_prefer_early_tours_feature(
+            "prefer_early_tours",
+            get_earliest_shift_start(blocks.fleet.as_ref()),
+            get_existing_jobs(&blocks.locks),
+        ),
         Objective::BalanceMaxLoad => {
             if props.has_multi_dimen_capacity {
                 create_max_load_balanced_feature::<MultiDimLoad>(
@@ -578,6 +581,14 @@ where
                 })
         })
         .collect()
+}
+
+/// Returns the jobs a relation pins to a vehicle and shift, whatever the relation's type.
+///
+/// Read from the locks, not from `SolutionContext::locked`: an `any` relation lands in `reserved`
+/// instead, and `locked` is extended at runtime with reload and recharge jobs.
+fn get_existing_jobs(locks: &[Arc<Lock>]) -> HashSet<CoreJob> {
+    locks.iter().flat_map(|lock| lock.details.iter()).flat_map(|detail| detail.jobs.iter()).cloned().collect()
 }
 
 fn create_optional_break_feature(name: &str) -> GenericResult<Feature> {

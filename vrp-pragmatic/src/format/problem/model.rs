@@ -568,13 +568,19 @@ pub enum Objective {
     /// An objective to schedule work in the earliest shifts of the planning period, so that a plan
     /// with more vehicle days than work fills the first days and leaves the last ones empty.
     ///
-    /// Scores each shift in use by how long after the fleet's earliest shift it starts. Only
-    /// opening a shift costs anything, so it says nothing about job order or timing within a day
-    /// and does not override cost-based intra-day decisions.
+    /// Scores each shift carrying work the solver could have placed elsewhere by how long after the
+    /// fleet's earliest shift it starts. Only the first such job on a shift costs anything, so it
+    /// says nothing about job order or timing within a day and does not override cost-based
+    /// intra-day decisions.
+    ///
+    /// Work it cannot move is ignored: jobs pinned by a relation, and a vehicle's own breaks,
+    /// reloads and recharges. A day held open by nothing but a recurring appointment therefore does
+    /// not become a free home for new work which could have been done earlier.
     ///
     /// Its order against `minimize-tours` is a real choice: above it, the earliest shifts win and
-    /// may cost extra vehicle days; below it, tour count wins and work can land later. See the
-    /// `early_tours` feature in `vrp-core` for the mechanism and the measured trade-offs.
+    /// may cost extra vehicle days; below it, tour count wins and work can land later - including
+    /// consolidating onto a day a standing appointment has already opened. See the `early_tours`
+    /// feature in `vrp-core` for the mechanism and the measured trade-offs.
     PreferEarlyTours,
 
     /// An objective to balance max load across all tours.
