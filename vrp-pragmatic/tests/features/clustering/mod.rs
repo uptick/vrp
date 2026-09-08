@@ -36,6 +36,7 @@ impl From<ActivityData> for Activity {
         };
 
         Activity {
+            break_id: None,
             job_id: activity.job_id,
             activity_type: activity.a_type,
             location: activity.location.map(|loc| (loc, 0.).to_loc()),

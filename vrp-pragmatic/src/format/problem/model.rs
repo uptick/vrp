@@ -424,6 +424,10 @@ pub enum VehicleOptionalBreakPolicy {
 pub enum VehicleBreak {
     /// An optional break which is more flexible, but might be not assigned.
     Optional {
+        /// An optional break id which is propagated back to the corresponding solution activity.
+        /// Has to be unique within a shift.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         /// Break time.
         time: VehicleOptionalBreakTime,
         /// Vehicle break places.
@@ -434,11 +438,24 @@ pub enum VehicleBreak {
     /// A break which has to be assigned. It is less flexible than optional break, but has strong
     /// assignment guarantee.
     Required {
+        /// An optional break id which is propagated back to the corresponding solution activity.
+        /// Has to be unique within a shift.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         /// Break time.
         time: VehicleRequiredBreakTime,
         /// Break duration.
         duration: Float,
     },
+}
+
+impl VehicleBreak {
+    /// Returns an id of the break if it is specified.
+    pub fn id(&self) -> Option<&String> {
+        match self {
+            Self::Optional { id, .. } | Self::Required { id, .. } => id.as_ref(),
+        }
+    }
 }
 
 /// Specifies a vehicle type.

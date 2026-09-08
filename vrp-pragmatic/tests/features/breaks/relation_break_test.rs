@@ -39,6 +39,7 @@ fn get_solution(
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: break_time,
                         places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: break_location, tag: None }],
                         policy: None,
