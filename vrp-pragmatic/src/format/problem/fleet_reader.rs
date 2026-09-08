@@ -138,10 +138,8 @@ pub(super) fn read_fleet(api_problem: &ApiProblem, props: &ProblemProperties, co
                 VehiclePlace { location, time }
             });
 
-            let details = vec![VehicleDetail {
-                start: Some(VehiclePlace { location: start_location, time: start_time }),
-                end,
-            }];
+            let details =
+                vec![VehicleDetail { start: Some(VehiclePlace { location: start_location, time: start_time }), end }];
 
             vehicle.vehicle_ids.iter().for_each(|vehicle_id| {
                 let mut dimens: Dimensions = Default::default();

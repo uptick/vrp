@@ -6,7 +6,12 @@ use vrp_core::prelude::Float;
 
 fn create_vehicle_type_with_max_duration_limit(max_duration: Float) -> VehicleType {
     VehicleType {
-        limits: Some(VehicleLimits { max_distance: None, max_duration: Some(max_duration), tour_size: None, allow_out_of_hours_depot_travel: None }),
+        limits: Some(VehicleLimits {
+            max_distance: None,
+            max_duration: Some(max_duration),
+            tour_size: None,
+            allow_out_of_hours_depot_travel: None,
+        }),
         ..create_default_vehicle_type()
     }
 }
@@ -125,23 +130,12 @@ fn allow_out_of_hours_depot_travel_moves_shift_bounds_onto_first_and_last_jobs()
     // depot before t=100 so it arrives at the first job at t>=100. The last job departure
     // must be <= 200, but the depot return may happen later.
     let problem = Problem {
-        plan: Plan {
-            jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 5.)],
-            ..create_empty_plan()
-        },
+        plan: Plan { jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 5.)], ..create_empty_plan() },
         fleet: Fleet {
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
-                    start: ShiftStart {
-                        earliest: format_time(100.),
-                        latest: None,
-                        location: (0., 0.).to_loc(),
-                    },
-                    end: Some(ShiftEnd {
-                        earliest: None,
-                        latest: format_time(200.),
-                        location: (0., 0.).to_loc(),
-                    }),
+                    start: ShiftStart { earliest: format_time(100.), latest: None, location: (0., 0.).to_loc() },
+                    end: Some(ShiftEnd { earliest: None, latest: format_time(200.), location: (0., 0.).to_loc() }),
                     breaks: None,
                     reloads: None,
                     recharges: None,
@@ -171,10 +165,7 @@ fn allow_out_of_hours_depot_travel_moves_shift_bounds_onto_first_and_last_jobs()
 
     // The depot was left before the shift started (at t<100) so that the first job is
     // reached at the shift start. Without the flag, depot departure would be pinned at >=100.
-    assert!(
-        depot_departure < 100.,
-        "expected depot to depart before shift start (t<100), got t={depot_departure}"
-    );
+    assert!(depot_departure < 100., "expected depot to depart before shift start (t<100), got t={depot_departure}");
     assert!(
         first_job_arrival >= 100.,
         "expected first-job arrival at/after shift start (t>=100), got t={first_job_arrival}"
@@ -188,10 +179,7 @@ fn allow_out_of_hours_depot_travel_still_enforces_shift_start_latest() {
     // would be t=200, which exceeds start.latest=150. The flag relaxes the depot-start
     // window but the travel-limit constraint must still reject this insertion.
     let problem = Problem {
-        plan: Plan {
-            jobs: vec![create_delivery_job_with_duration("job1", (200., 0.), 5.)],
-            ..create_empty_plan()
-        },
+        plan: Plan { jobs: vec![create_delivery_job_with_duration("job1", (200., 0.), 5.)], ..create_empty_plan() },
         fleet: Fleet {
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
@@ -200,11 +188,7 @@ fn allow_out_of_hours_depot_travel_still_enforces_shift_start_latest() {
                         latest: Some(format_time(150.)),
                         location: (0., 0.).to_loc(),
                     },
-                    end: Some(ShiftEnd {
-                        earliest: None,
-                        latest: format_time(1000.),
-                        location: (0., 0.).to_loc(),
-                    }),
+                    end: Some(ShiftEnd { earliest: None, latest: format_time(1000.), location: (0., 0.).to_loc() }),
                     breaks: None,
                     reloads: None,
                     recharges: None,
@@ -236,23 +220,12 @@ fn create_single_long_job_problem(allow_out_of_hours_depot_travel: bool) -> Prob
     // and shift end regardless of when the depot is left. This mirrors "a 12h task on a
     // 9-5 (8h) shift": it must never be assigned, with OR without the flag.
     Problem {
-        plan: Plan {
-            jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 150.)],
-            ..create_empty_plan()
-        },
+        plan: Plan { jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 150.)], ..create_empty_plan() },
         fleet: Fleet {
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
-                    start: ShiftStart {
-                        earliest: format_time(100.),
-                        latest: None,
-                        location: (0., 0.).to_loc(),
-                    },
-                    end: Some(ShiftEnd {
-                        earliest: None,
-                        latest: format_time(200.),
-                        location: (0., 0.).to_loc(),
-                    }),
+                    start: ShiftStart { earliest: format_time(100.), latest: None, location: (0., 0.).to_loc() },
+                    end: Some(ShiftEnd { earliest: None, latest: format_time(200.), location: (0., 0.).to_loc() }),
                     breaks: None,
                     reloads: None,
                     recharges: None,
