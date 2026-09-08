@@ -14,6 +14,7 @@ fn can_assign_break_between_jobs() {
                 costs: create_default_vehicle_costs(),
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(10.)]),
                         places: vec![VehicleOptionalBreakPlace {
                             duration: 2.0,

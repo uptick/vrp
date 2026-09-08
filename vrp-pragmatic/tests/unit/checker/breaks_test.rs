@@ -4,7 +4,7 @@ use crate::helpers::*;
 use vrp_core::models::examples::create_example_problem;
 
 fn test_violations() -> Option<Vec<Violation>> {
-    Some(vec![Violation::Break { vehicle_id: "my_vehicle_1".to_string(), shift_index: 0 }])
+    Some(vec![Violation::Break { break_id: None, vehicle_id: "my_vehicle_1".to_string(), shift_index: 0 }])
 }
 
 fn get_matched_break_error_msg(matched: usize, actual: usize) -> Result<(), Vec<GenericError>> {
@@ -80,6 +80,7 @@ fn can_check_breaks_impl(
                     start: ShiftStart { earliest: format_time(0.), latest: None, location: (0., 0.).to_loc() },
                     end: Some(ShiftEnd { earliest: None, latest: format_time(1000.), location: (0., 0.).to_loc() }),
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: break_times,
                         places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                         policy: None,
@@ -96,6 +97,7 @@ fn can_check_breaks_impl(
     };
 
     let mut activities = vec![Activity {
+        break_id: None,
         job_id: "job2".to_string(),
         activity_type: "delivery".to_string(),
         location: None,
@@ -105,6 +107,7 @@ fn can_check_breaks_impl(
     }];
     if has_break {
         activities.push(Activity {
+            break_id: None,
             job_id: "break".to_string(),
             activity_type: "break".to_string(),
             location: None,

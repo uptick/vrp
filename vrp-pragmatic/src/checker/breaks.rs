@@ -47,7 +47,7 @@ fn check_break_assignment(context: &CheckerContext) -> GenericResult<()> {
                             .map(|info| &info.location)
                             .cloned();
 
-                        let has_match = match vehicle_break {
+                        let has_match = match &vehicle_break {
                             // TODO check tag and duration
                             VehicleBreak::Optional { places, .. } => places.iter().any(|place| match &place.location {
                                 Some(location) => actual_loc.as_ref() == Some(location),
@@ -62,6 +62,17 @@ fn check_break_assignment(context: &CheckerContext) -> GenericResult<()> {
                             )
                             .into());
                         }
+
+                        // check id
+                        if break_activity.break_id.as_ref() != vehicle_break.id() {
+                            return Err(format!(
+                                "break id '{:?}' is invalid: expected is '{:?}'",
+                                break_activity.break_id,
+                                vehicle_break.id()
+                            )
+                            .into());
+                        }
+
                         Ok(acc + 1)
                     },
                 )
@@ -177,7 +188,7 @@ pub(crate) fn get_break_time_window(tour: &Tour, vehicle_break: &VehicleBreak) -
 
             Ok(TimeWindow::new(departure + *offset.first().unwrap(), departure + *offset.last().unwrap()))
         }
-        VehicleBreak::Required { time, duration } => {
+        VehicleBreak::Required { time, duration, .. } => {
             let (start, end) = match time {
                 VehicleRequiredBreakTime::OffsetTime { earliest, latest } => {
                     (departure + *earliest, departure + *latest)

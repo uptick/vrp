@@ -17,12 +17,14 @@ pub struct ReservedTimeSpan {
     pub time: TimeSpan,
     /// An extra duration to be applied at given time.
     pub duration: Duration,
+    /// An optional id which can be used to trace the reserved time back to its origin.
+    pub id: Option<String>,
 }
 
 impl ReservedTimeSpan {
     /// Converts `ReservedTimeSpan` to `ReservedTimeWindow`.
     pub fn to_reserved_time_window(&self, offset: Timestamp) -> ReservedTimeWindow {
-        ReservedTimeWindow { time: self.time.to_time_window(offset), duration: self.duration }
+        ReservedTimeWindow { time: self.time.to_time_window(offset), duration: self.duration, id: self.id.clone() }
     }
 }
 
@@ -33,6 +35,8 @@ pub struct ReservedTimeWindow {
     pub time: TimeWindow,
     /// An extra duration to be applied at given time.
     pub duration: Duration,
+    /// An optional id which can be used to trace the reserved time back to its origin.
+    pub id: Option<String>,
 }
 
 /// Specifies reserved time index type.

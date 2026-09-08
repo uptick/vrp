@@ -23,6 +23,8 @@ are already published. So, I stick to it for now.
 * add naive implementation of LKH local search
 * add `minimize-depot-travel-time` objective which prefers assigning jobs close (by travel time) to the vehicle's depot (shift start)
 * add `prefer-early-tours` objective which schedules work in the earliest shifts of the planning period without biasing job order within a day
+* add an optional `id` property to vehicle breaks (both optional and required) which is propagated back to the
+  solution as `breakId` on break activities and on break violations
 
 
 ## [1.25.0] 2024-11-10

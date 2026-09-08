@@ -68,6 +68,7 @@ fn can_create_geo_json_for_cluster_geometry() {
         parking: None,
         activities: vec![
             Activity {
+                break_id: None,
                 job_id: "job1".to_string(),
                 activity_type: "delivery".to_string(),
                 location: Some(Location::Coordinate { lat: 1., lng: 0.0 }),
@@ -76,6 +77,7 @@ fn can_create_geo_json_for_cluster_geometry() {
                 commute: Some(Commute { forward: None, backward: None }),
             },
             Activity {
+                break_id: None,
                 job_id: "job2".to_string(),
                 activity_type: "delivery".to_string(),
                 location: Some(Location::Coordinate { lat: 2., lng: 0.0 }),
