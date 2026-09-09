@@ -122,6 +122,7 @@ fn create_tour(
                         None
                     },
                     job_tag: None,
+                    break_id: None,
                     commute: None,
                 }],
                 parking: None,
@@ -151,6 +152,11 @@ fn create_tour(
                     get_job_tag(single, (act.place.location, (act.place.time.clone(), start.schedule.departure)))
                         .cloned()
                 });
+                let break_id = if is_break {
+                    act.job.as_ref().and_then(|single| single.dimens.get_break_id().cloned())
+                } else {
+                    None
+                };
                 let job_id = match activity_type.as_str() {
                     "pickup" | "delivery" | "replacement" | "service" => {
                         let single = act.job.as_ref().unwrap();
@@ -240,6 +246,7 @@ fn create_tour(
                         end: format_time(activity_departure),
                     }),
                     job_tag,
+                    break_id,
                     commute: act
                         .commute
                         .as_ref()
@@ -389,6 +396,7 @@ fn create_violations(solution: &DomainSolution) -> Option<Vec<Violation>> {
         .map(|(job, _)| Violation::Break {
             vehicle_id: job.dimens().get_vehicle_id().expect("vehicle id").clone(),
             shift_index: job.dimens().get_shift_index().copied().expect("shift index"),
+            break_id: job.dimens().get_break_id().cloned(),
         })
         .collect::<Vec<_>>();
 

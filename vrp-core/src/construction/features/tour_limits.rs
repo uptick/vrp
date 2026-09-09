@@ -126,8 +126,8 @@ impl FeatureConstraint for TravelLimitConstraint {
                         activity_ctx.target.place.location,
                         TravelTime::Departure(activity_ctx.prev.schedule.departure),
                     );
-                    let arrival = (activity_ctx.prev.schedule.departure + travel)
-                        .max(activity_ctx.target.place.time.start);
+                    let arrival =
+                        (activity_ctx.prev.schedule.departure + travel).max(activity_ctx.target.place.time.start);
                     if arrival > start_latest {
                         return ConstraintViolation::skip(self.duration_code);
                     }

@@ -10,6 +10,7 @@ fn can_detect_invalid_break_time() {
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![]),
                         places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                         policy: None,
@@ -80,6 +81,7 @@ fn can_handle_rescheduling_with_required_break_impl(latest: Option<Float>, expec
                         location: (0., 0.).to_loc(),
                     },
                     breaks: Some(vec![VehicleBreak::Required {
+                        id: None,
                         time: VehicleRequiredBreakTime::OffsetTime { earliest: 10., latest: 10. },
                         duration: 2.,
                     }]),
@@ -134,6 +136,48 @@ fn can_handle_reload_resources_impl(resources: Option<Vec<&str>>, expected: Opti
 
     let result =
         check_e1308_vehicle_reload_resources(&ValidationContext::new(&problem, None, &CoordIndex::new(&problem)));
+
+    assert_eq!(result.err().map(|err| err.code), expected);
+}
+
+parameterized_test! {can_detect_duplicated_break_ids, (break_ids, expected), {
+    can_detect_duplicated_break_ids_impl(break_ids, expected);
+}}
+
+can_detect_duplicated_break_ids! {
+    case01_no_ids: (vec![None, None], None),
+    case02_unique_ids: (vec![Some("b1"), Some("b2")], None),
+    case03_duplicated_ids: (vec![Some("b1"), Some("b1")], Some("E1309".to_string())),
+    case04_partially_set: (vec![Some("b1"), None], None),
+}
+
+fn can_detect_duplicated_break_ids_impl(break_ids: Vec<Option<&str>>, expected: Option<String>) {
+    let problem = Problem {
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                shifts: vec![VehicleShift {
+                    breaks: Some(
+                        break_ids
+                            .iter()
+                            .map(|id| VehicleBreak::Optional {
+                                id: id.map(|id| id.to_string()),
+                                time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(10.)]),
+                                places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
+                                policy: None,
+                            })
+                            .collect(),
+                    ),
+                    ..create_default_vehicle_shift()
+                }],
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+
+    let result =
+        check_e1309_vehicle_break_ids_are_unique(&ValidationContext::new(&problem, None, &CoordIndex::new(&problem)));
 
     assert_eq!(result.err().map(|err| err.code), expected);
 }

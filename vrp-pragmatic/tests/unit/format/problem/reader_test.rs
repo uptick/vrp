@@ -151,6 +151,7 @@ fn can_read_complex_problem() {
                         location: (52.4862, 13.45148).to_loc(),
                     }),
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![
                             "1970-01-01T00:00:10Z".to_string(),
                             "1970-01-01T00:01:20Z".to_string(),
@@ -167,7 +168,12 @@ fn can_read_complex_problem() {
                 }],
                 capacity: vec![10, 1],
                 skills: Some(vec!["unique1".to_string(), "unique2".to_string()]),
-                limits: Some(VehicleLimits { max_distance: Some(123.1), max_duration: Some(100.), tour_size: Some(3), allow_out_of_hours_depot_travel: None }),
+                limits: Some(VehicleLimits {
+                    max_distance: Some(123.1),
+                    max_duration: Some(100.),
+                    tour_size: Some(3),
+                    allow_out_of_hours_depot_travel: None,
+                }),
             }],
             ..create_default_fleet()
         },

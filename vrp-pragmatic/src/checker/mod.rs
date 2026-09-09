@@ -185,6 +185,8 @@ impl CheckerContext {
                 .and_then(|breaks| {
                     breaks
                         .iter()
+                        // NOTE: when break id is known, it identifies the break unambiguously
+                        .filter(|b| activity.break_id.is_none() || activity.break_id.as_ref() == b.id())
                         // TODO: would be nice to propagate the error
                         .find(|b| get_break_time_window(tour, b).map(|tw| tw.intersects(&time)).unwrap_or(false))
                 })

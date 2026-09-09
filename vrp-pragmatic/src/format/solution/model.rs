@@ -99,6 +99,10 @@ pub struct Activity {
     /// Job tag.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub job_tag: Option<String>,
+    /// An id of the vehicle break which corresponds to this activity. Set only for break activities
+    /// when the break has an id specified in the problem definition.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub break_id: Option<String>,
     /// Commute information.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commute: Option<Commute>,
@@ -278,6 +282,9 @@ pub enum Violation {
         vehicle_id: String,
         /// Index of the shift.
         shift_index: usize,
+        /// An id of the break as specified in the problem definition, if any.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        break_id: Option<String>,
     },
 }
 

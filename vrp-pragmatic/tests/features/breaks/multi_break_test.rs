@@ -19,6 +19,7 @@ fn can_use_two_breaks() {
                     },
                     breaks: Some(vec![
                         VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(10.)]),
                             places: vec![VehicleOptionalBreakPlace {
                                 duration: 2.0,
@@ -28,6 +29,7 @@ fn can_use_two_breaks() {
                             policy: None,
                         },
                         VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(100.), format_time(120.)]),
                             places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                             policy: None,

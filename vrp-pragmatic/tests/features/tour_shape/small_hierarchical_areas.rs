@@ -10,11 +10,7 @@ fn can_handle_hierarchical_areas_with_too_few_locations() {
             ..create_empty_plan()
         },
         fleet: create_default_fleet(),
-        objectives: Some(vec![
-            MinimizeUnassigned { breaks: None },
-            HierarchicalAreas { levels: 3 },
-            MinimizeCost,
-        ]),
+        objectives: Some(vec![MinimizeUnassigned { breaks: None }, HierarchicalAreas { levels: 3 }, MinimizeCost]),
         ..create_empty_problem()
     };
     let matrix = create_matrix_from_problem(&problem);

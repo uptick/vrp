@@ -73,8 +73,7 @@ fn apply_first_job_arrival_floor(route_ctx: &mut RouteContext, transport: &dyn T
         return;
     }
     let first_location = first_stop.place.location;
-    let travel =
-        transport.duration(route_ctx.route(), start_location, first_location, TravelTime::Arrival(*floor));
+    let travel = transport.duration(route_ctx.route(), start_location, first_location, TravelTime::Arrival(*floor));
     let target_departure = *floor - travel;
     if target_departure > start_departure {
         route_ctx.route_mut().tour.get_mut(0).unwrap().schedule.departure = target_departure;

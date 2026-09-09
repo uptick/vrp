@@ -31,6 +31,7 @@ fn can_skip_break_when_vehicle_not_used_impl(policy: Option<VehicleOptionalBreak
                             location: (100., 0.).to_loc(),
                         }),
                         breaks: Some(vec![VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(8.)]),
                             places: vec![VehicleOptionalBreakPlace {
                                 duration: 2.0,
@@ -109,6 +110,7 @@ fn can_skip_break_when_jobs_completed_impl(policy: Option<VehicleOptionalBreakPo
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(8.)]),
                         places: vec![VehicleOptionalBreakPlace {
                             duration: 2.0,
@@ -156,7 +158,11 @@ fn can_skip_break_when_jobs_completed_impl(policy: Option<VehicleOptionalBreakPo
                     .statistic(StatisticBuilder::default().driving(2).serving(10).build())
                     .build()
             )
-            .violations(Some(vec![Violation::Break { vehicle_id: "my_vehicle_1".to_string(), shift_index: 0 }]))
+            .violations(Some(vec![Violation::Break {
+                break_id: None,
+                vehicle_id: "my_vehicle_1".to_string(),
+                shift_index: 0
+            }]))
             .build()
     );
 }
@@ -181,6 +187,7 @@ fn can_skip_second_break_when_jobs_completed_impl(policy: Option<VehicleOptional
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![
                         VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(5.), format_time(10.)]),
                             places: vec![VehicleOptionalBreakPlace {
                                 duration: 2.0,
@@ -190,6 +197,7 @@ fn can_skip_second_break_when_jobs_completed_impl(policy: Option<VehicleOptional
                             policy: policy.clone(),
                         },
                         VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(100.), format_time(120.)]),
                             places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                             policy,
@@ -274,6 +282,7 @@ fn can_skip_break_depending_on_policy_impl(
             vehicles: vec![VehicleType {
                 shifts: vec![VehicleShift {
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(time.0), format_time(time.1)]),
                         places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                         policy,

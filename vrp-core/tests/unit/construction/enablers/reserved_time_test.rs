@@ -56,6 +56,7 @@ fn can_search_for_reserved_time_impl(
             .map(|((start, end), duration)| ReservedTimeSpan {
                 time: TimeSpan::Window(TimeWindow::new(start, end)),
                 duration,
+                id: None,
             })
             .collect::<Vec<_>>(),
     )]
@@ -126,6 +127,7 @@ parameterized_test! {can_update_state_for_reserved_time, (vehicle_detail_data, r
     let reserved_time = ReservedTimeSpan {
         time: TimeSpan::Window(TimeWindow::new(reserved_time.0, reserved_time.0)),
         duration: reserved_time.1 - reserved_time.0,
+        id: None,
     };
     can_update_state_for_reserved_time_impl(vehicle_detail_data, reserved_time, activities, late_arrival_expected, expected_schedules);
 }}
@@ -174,6 +176,7 @@ parameterized_test! {can_evaluate_activity, (vehicle_detail_data, reserved_time,
     let reserved_time = ReservedTimeSpan {
         time: TimeSpan::Window(TimeWindow::new(reserved_time.0, reserved_time.0)),
         duration: reserved_time.1 - reserved_time.0,
+        id: None,
     };
     can_evaluate_activity_impl(vehicle_detail_data, reserved_time, target, activities, expected_schedules);
 }}
@@ -287,6 +290,7 @@ fn can_avoid_reserved_time_when_driving_impl(
     let reserved_time = ReservedTimeSpan {
         time: TimeSpan::Offset(TimeOffset::new(reserved_time.0, reserved_time.1)),
         duration: reserved_time.2,
+        id: None,
     };
     let (reserved_times_fn, _, mut route_ctx) =
         create_feature_and_route(vehicle_detail_data, activities, reserved_time);

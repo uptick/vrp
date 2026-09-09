@@ -42,6 +42,7 @@ mod optional {
          policy in policy_proto,
         ) -> VehicleBreak {
             VehicleBreak::Optional {
+                id: None,
                 time,
                 places,
                 policy
@@ -132,7 +133,7 @@ mod required {
          time in time_proto,
          duration in duration_proto,
         ) -> VehicleBreak {
-            VehicleBreak::Required { time, duration }
+            VehicleBreak::Required { id: None, time, duration }
         }
     }
 

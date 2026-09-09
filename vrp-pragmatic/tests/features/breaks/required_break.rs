@@ -33,6 +33,7 @@ fn can_assign_break_during_travel() {
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.)), create_delivery_job("job2", (10., 0.))],
         VehicleBreak::Required {
+            id: None,
             time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
             duration: 2.,
         },
@@ -86,6 +87,7 @@ fn can_assign_break_during_activity() {
     let problem = create_problem(
         vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
         VehicleBreak::Required {
+            id: None,
             time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
             duration: 2.,
         },
@@ -140,6 +142,7 @@ fn can_handle_required_break_when_its_start_falls_at_activity_end() {
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.)), create_delivery_job("job2", (10., 0.))],
         VehicleBreak::Required {
+            id: None,
             time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(6.), latest: format_time(6.) },
             duration: 2.,
         },
@@ -187,6 +190,7 @@ fn can_skip_break_if_it_is_after_start_before_end_range() {
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.))],
         VehicleBreak::Required {
+            id: None,
             time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(7.) },
             duration: 2.,
         },
@@ -205,6 +209,7 @@ fn can_reschedule_break_early_from_transport_to_activity() {
     let problem = create_problem(
         vec![create_delivery_job("job1", (5., 0.)), create_delivery_job("job2", (10., 0.))],
         VehicleBreak::Required {
+            id: None,
             time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(4.), latest: format_time(7.) },
             duration: 2.,
         },
@@ -300,6 +305,7 @@ fn can_handle_required_break_with_infeasible_sequence_relation() {
                         location: Location::Reference { index: 5 },
                     }),
                     breaks: Some(vec![VehicleBreak::Required {
+                        id: None,
                         time: VehicleRequiredBreakTime::OffsetTime { earliest: 15303., latest: 15303. },
                         duration: 1800.,
                     }]),

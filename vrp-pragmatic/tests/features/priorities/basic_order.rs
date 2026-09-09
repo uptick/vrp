@@ -15,7 +15,12 @@ fn create_test_plan_with_three_jobs() -> Plan {
 }
 
 fn create_test_limit() -> Option<VehicleLimits> {
-    Some(VehicleLimits { max_distance: Some(15.), max_duration: None, tour_size: None, allow_out_of_hours_depot_travel: None })
+    Some(VehicleLimits {
+        max_distance: Some(15.),
+        max_duration: None,
+        tour_size: None,
+        allow_out_of_hours_depot_travel: None,
+    })
 }
 
 fn create_order_objective(is_constrained: bool) -> Vec<Objective> {
@@ -159,6 +164,7 @@ fn can_handle_order_between_special_activities() {
                 shifts: vec![VehicleShift {
                     end: Some(ShiftEnd { earliest: None, latest: format_time(1000.), location: (10., 0.).to_loc() }),
                     breaks: Some(vec![VehicleBreak::Optional {
+                        id: None,
                         time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(100.), format_time(200.)]),
                         places: vec![VehicleOptionalBreakPlace {
                             duration: 1.,

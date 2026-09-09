@@ -82,6 +82,7 @@ fn check_e1303_vehicle_breaks_time_is_correct(ctx: &ValidationContext) -> Result
                             VehicleBreak::Required {
                                 time: VehicleRequiredBreakTime::OffsetTime { earliest, latest },
                                 duration,
+                                ..
                             } => {
                                 let departure = parse_time(&shift.start.earliest);
                                 Some(Some(TimeWindow::new(departure + *earliest, departure + *latest + *duration)))
@@ -89,6 +90,7 @@ fn check_e1303_vehicle_breaks_time_is_correct(ctx: &ValidationContext) -> Result
                             VehicleBreak::Required {
                                 time: VehicleRequiredBreakTime::ExactTime { earliest, latest },
                                 duration,
+                                ..
                             } => Some(
                                 parse_time_safe(earliest)
                                     .ok()
@@ -258,6 +260,31 @@ fn check_e1308_vehicle_reload_resources(ctx: &ValidationContext) -> Result<(), F
     }
 }
 
+/// Checks that break ids are unique within a shift.
+fn check_e1309_vehicle_break_ids_are_unique(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let duplicates = ctx
+        .vehicles()
+        .flat_map(|vehicle| vehicle.shifts.iter())
+        .filter_map(|shift| {
+            get_duplicates(shift.breaks.iter().flat_map(|breaks| breaks.iter()).filter_map(|br| br.id()))
+        })
+        .flatten()
+        .collect::<HashSet<_>>();
+
+    if duplicates.is_empty() {
+        Ok(())
+    } else {
+        let mut duplicates = duplicates.into_iter().collect::<Vec<_>>();
+        duplicates.sort();
+
+        Err(FormatError::new(
+            "E1309".to_string(),
+            "duplicated vehicle break ids".to_string(),
+            format!("remove duplicated break ids within the shift: {}", duplicates.join(", ")),
+        ))
+    }
+}
+
 type CheckShiftFn = Box<dyn Fn(&VehicleType, &VehicleShift, Option<TimeWindow>) -> bool>;
 
 fn get_invalid_type_ids(ctx: &ValidationContext, check_shift_fn: CheckShiftFn) -> Vec<String> {
@@ -301,6 +328,7 @@ pub fn validate_vehicles(ctx: &ValidationContext) -> Result<(), MultiFormatError
         check_e1306_vehicle_has_no_zero_costs(ctx),
         check_e1307_vehicle_offset_break_rescheduling(ctx),
         check_e1308_vehicle_reload_resources(ctx),
+        check_e1309_vehicle_break_ids_are_unique(ctx),
     ])
     .map_err(From::from)
 }

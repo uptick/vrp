@@ -129,6 +129,7 @@ fn can_handle_properly_invalid_break_removal() {
                             location: Location::Coordinate { lat: 52.44105158292253, lng: 13.424429791168873 },
                         }),
                         breaks: Some(vec![VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![
                                 "2020-07-04T12:00:00Z".to_string(),
                                 "2020-07-04T14:00:00Z".to_string(),

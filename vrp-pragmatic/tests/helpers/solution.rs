@@ -256,6 +256,7 @@ impl Default for ActivityBuilder {
     fn default() -> Self {
         Self {
             activity: Activity {
+                break_id: None,
                 job_id: "".to_string(),
                 activity_type: "".to_string(),
                 location: None,

@@ -62,6 +62,7 @@ pub(super) fn insert_reserved_times_as_breaks(
 
             let break_time = reserved_time.duration as i64;
             let break_cost = break_time as Float * route.actor.vehicle.costs.per_service_time;
+            let break_id = reserved_time.id.clone();
 
             for (stop_idx, stop) in tour.stops.iter_mut().enumerate() {
                 let stop_tw =
@@ -71,6 +72,7 @@ pub(super) fn insert_reserved_times_as_breaks(
                     insert_break(
                         (stop, stop_tw, stop_idx),
                         (break_time, break_cost, break_info.clone()),
+                        break_id.clone(),
                         &reserved_tw,
                         &mut tour.statistic,
                     )
@@ -85,6 +87,7 @@ pub(super) fn insert_reserved_times_as_breaks(
 fn insert_break(
     stop_data: (&mut Stop, TimeWindow, usize),
     break_data: (i64, Cost, Option<BreakInsertion>),
+    break_id: Option<String>,
     reserved_tw: &TimeWindow,
     statistic: &mut Statistic,
 ) {
@@ -132,6 +135,7 @@ fn insert_break(
             location: None,
             time: Some(Interval { start: format_time(activity_time.start), end: format_time(activity_time.end) }),
             job_tag: None,
+            break_id,
             commute: None,
         },
     );

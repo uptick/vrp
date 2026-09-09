@@ -89,6 +89,7 @@ mod single {
                         start: ShiftStart { earliest: format_time(0.), latest: None, location: (0., 0.).to_loc() },
                         end: Some(ShiftEnd { earliest: None, latest: format_time(1000.), location: (0., 0.).to_loc() }),
                         breaks: Some(vec![VehicleBreak::Optional {
+                            id: None,
                             time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(0.), format_time(1000.)]),
                             places: vec![VehicleOptionalBreakPlace { duration: 2.0, location: None, tag: None }],
                             policy: None,

@@ -1,7 +1,7 @@
 use crate::format::coord_index::CoordIndex;
 use crate::format::problem::JobSkills as ApiJobSkills;
 use crate::format::problem::*;
-use crate::format::{JobIndex, Location};
+use crate::format::{BreakIdDimension, JobIndex, Location};
 use crate::utils::VariableJobPermutation;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -209,10 +209,10 @@ fn read_optional_breaks(
 ) {
     (1..)
         .zip(breaks.iter().filter_map(|vehicle_break| match vehicle_break {
-            VehicleBreak::Optional { time, places, policy } => Some((time, places, policy)),
+            VehicleBreak::Optional { id, time, places, policy } => Some((id, time, places, policy)),
             VehicleBreak::Required { .. } => None,
         }))
-        .flat_map(|(break_idx, (break_time, break_places, policy))| {
+        .flat_map(|(break_idx, (break_id, break_time, break_places, policy))| {
             vehicle
                 .vehicle_ids
                 .iter()
@@ -246,6 +246,10 @@ fn read_optional_breaks(
                         };
 
                         job.dimens.set_break_policy(policy);
+                    }
+
+                    if let Some(break_id) = break_id {
+                        job.dimens.set_break_id(break_id.clone());
                     }
 
                     (job_id, job)

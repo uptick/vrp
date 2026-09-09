@@ -7,6 +7,7 @@ use vrp_core::models::common::{Duration, Timestamp};
 fn create_optional_break(time_window: (Timestamp, Timestamp), duration: Duration) -> VehicleBreak {
     let (start, end) = time_window;
     VehicleBreak::Optional {
+        id: None,
         time: VehicleOptionalBreakTime::TimeWindow(vec![format_time(start), format_time(end)]),
         places: vec![VehicleOptionalBreakPlace { duration, location: None, tag: None }],
         policy: None,
@@ -14,7 +15,7 @@ fn create_optional_break(time_window: (Timestamp, Timestamp), duration: Duration
 }
 
 fn create_required_break(earliest: Timestamp, latest: Timestamp, duration: Duration) -> VehicleBreak {
-    VehicleBreak::Required { time: VehicleRequiredBreakTime::OffsetTime { earliest, latest }, duration }
+    VehicleBreak::Required { id: None, time: VehicleRequiredBreakTime::OffsetTime { earliest, latest }, duration }
 }
 
 fn create_vehicle_shift_with_breaks(breaks: Vec<VehicleBreak>) -> VehicleShift {

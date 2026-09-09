@@ -198,7 +198,7 @@ fn can_merge_required_break_on_stop_arrival_time_properly() {
     route.tour.all_activities_mut().last().unwrap().schedule.arrival = 6.;
     let reserved_times_index = vec![(
         route.actor.clone(),
-        vec![ReservedTimeSpan { time: TimeSpan::Window(TimeWindow::new(4., 4.)), duration: 1. }],
+        vec![ReservedTimeSpan { id: None, time: TimeSpan::Window(TimeWindow::new(4., 4.)), duration: 1. }],
     )]
     .into_iter()
     .collect();

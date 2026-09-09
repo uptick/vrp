@@ -69,14 +69,14 @@ fn read_reserved_times_index(api_problem: &ApiProblem, fleet: &CoreFleet) -> Res
         .flat_map(|vehicle| {
             vehicle.shifts.iter().enumerate().flat_map(move |(shift_idx, shift)| {
                 shift.breaks.iter().flat_map(|br| br.iter()).filter_map(move |br| match br {
-                    VehicleBreak::Required { time, duration } => {
-                        Some((vehicle.type_id.clone(), shift_idx, time.clone(), *duration))
+                    VehicleBreak::Required { id, time, duration } => {
+                        Some((vehicle.type_id.clone(), shift_idx, time.clone(), *duration, id.clone()))
                     }
                     VehicleBreak::Optional { .. } => None,
                 })
             })
         })
-        .collect_group_by_key(|(type_id, shift_idx, _, _)| (type_id.clone(), *shift_idx));
+        .collect_group_by_key(|(type_id, shift_idx, _, _, _)| (type_id.clone(), *shift_idx));
 
     fleet
         .actors
@@ -89,7 +89,7 @@ fn read_reserved_times_index(api_problem: &ApiProblem, fleet: &CoreFleet) -> Res
                 .get(&(type_id, shift_idx))
                 .iter()
                 .flat_map(|data| data.iter())
-                .map(|(_, _, time, duration)| {
+                .map(|(_, _, time, duration, id)| {
                     let time = match &time {
                         VehicleRequiredBreakTime::ExactTime { earliest, latest } => {
                             TimeSpan::Window(TimeWindow::new(parse_time(earliest), parse_time(latest)))
@@ -100,7 +100,7 @@ fn read_reserved_times_index(api_problem: &ApiProblem, fleet: &CoreFleet) -> Res
                     };
                     let duration = *duration;
 
-                    ReservedTimeSpan { time, duration }
+                    ReservedTimeSpan { time, duration, id: id.clone() }
                 })
                 .collect::<Vec<_>>();
 

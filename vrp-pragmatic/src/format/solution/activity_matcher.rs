@@ -111,13 +111,17 @@ pub(crate) fn try_match_break_activity(
         .flat_map(|vehicle| vehicle.shifts.iter())
         .flat_map(|shift| shift.breaks.iter())
         .flat_map(|brs| brs.iter())
+        // NOTE: when activity has a break id, use it to narrow down the search
+        .filter(|br| activity.break_id.is_none() || activity.break_id.as_ref() == br.id())
         .filter_map(|br| match br {
-            VehicleBreak::Required { time: VehicleRequiredBreakTime::ExactTime { earliest, latest }, duration } => {
-                Some(TimeWindow::new(parse_time(earliest), parse_time(latest) + *duration))
-            }
-            VehicleBreak::Required { time: VehicleRequiredBreakTime::OffsetTime { earliest, latest }, duration } => {
-                Some(TimeWindow::new(route_start_time + *earliest, route_start_time + *latest + *duration))
-            }
+            VehicleBreak::Required {
+                time: VehicleRequiredBreakTime::ExactTime { earliest, latest }, duration, ..
+            } => Some(TimeWindow::new(parse_time(earliest), parse_time(latest) + *duration)),
+            VehicleBreak::Required {
+                time: VehicleRequiredBreakTime::OffsetTime { earliest, latest },
+                duration,
+                ..
+            } => Some(TimeWindow::new(route_start_time + *earliest, route_start_time + *latest + *duration)),
             VehicleBreak::Optional { .. } => None,
         })
         .find(|time| activity_time.intersects(time))
