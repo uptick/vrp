@@ -70,30 +70,21 @@ impl ActivityCost for DynamicActivityCost {
         let schedule = TimeWindow::new(arrival, departure);
 
         (self.reserved_times_fn)(route, &schedule).map_or(ControlFlow::Continue(departure), |reserved_time| {
-            // NOTE we ignore reserved_time.time.start and consider the latest possible time only
-            let reserved_tw = &reserved_time.time;
-            let reserved_tw = TimeWindow::new(reserved_tw.end, reserved_tw.end + reserved_time.duration);
+            let service_start = estimate_service_start_with_reserved_time(
+                &reserved_time,
+                arrival,
+                &activity.place.time,
+                activity.place.duration,
+            );
+            let departure = service_start + activity.place.duration;
 
-            assert!(reserved_tw.intersects(&schedule));
-
-            let activity_tw = &activity.place.time;
-
-            let extra_duration = if reserved_tw.start < activity_tw.start {
-                let waiting_time = TimeWindow::new(arrival, activity_tw.start);
-                let overlapping = waiting_time.overlapping(&reserved_tw).map(|tw| tw.duration()).unwrap_or(0.);
-
-                reserved_time.duration - overlapping
-            } else {
-                reserved_time.duration
-            };
-
-            // NOTE: do not allow to start or restart work after break finished
-            if activity_start + extra_duration > activity.place.time.end {
+            // NOTE: do not allow to start work after break finished
+            if service_start > activity.place.time.end {
                 // TODO this branch is the reason why departure rescheduling is disabled.
                 //      theoretically, rescheduling should be aware somehow about dynamic costs
-                ControlFlow::Break(departure + extra_duration)
+                ControlFlow::Break(departure)
             } else {
-                ControlFlow::Continue(departure + extra_duration)
+                ControlFlow::Continue(departure)
             }
         })
     }
@@ -112,6 +103,31 @@ impl ActivityCost for DynamicActivityCost {
 
         ControlFlow::Continue(value)
     }
+}
+
+/// Estimates when service at an activity starts when the given reserved time applies to it.
+///
+/// Reserved time never interrupts a service: it is either taken while waiting for the activity's
+/// time window to open, or the service is postponed until the reserved time is finished. In the latter
+/// case, reserved time is taken as early as its time window allows, but not so early that the service
+/// finishes before the reserved time's latest end (otherwise, it would be applied again afterward).
+pub fn estimate_service_start_with_reserved_time(
+    reserved_time: &ReservedTimeWindow,
+    arrival: Timestamp,
+    activity_tw: &TimeWindow,
+    service_duration: Duration,
+) -> Timestamp {
+    let activity_start = arrival.max(activity_tw.start);
+    let latest_start = reserved_time.time.end;
+
+    // NOTE reserved time fits into waiting time at its latest start
+    if latest_start + reserved_time.duration <= activity_start {
+        return activity_start;
+    }
+
+    let reserved_start = arrival.max(reserved_time.time.start).max(latest_start - service_duration);
+
+    activity_start.max(reserved_start + reserved_time.duration)
 }
 
 /// Provides way to calculate transport costs which might contain reserved time.
