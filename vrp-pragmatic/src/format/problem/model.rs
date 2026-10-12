@@ -629,6 +629,9 @@ pub enum Objective {
     /// An objective to minimize how long after their `due` date jobs are served, in total.
     MinimizeTardiness,
 
+    /// An objective to serve jobs early between the plan start and their `due` date.
+    MinimizeDueWindowUse,
+
     /// An objective to prefer assigning jobs close (by travel time) to the vehicle's depot
     /// (shift start).
     MinimizeDepotTravelTime {

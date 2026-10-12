@@ -212,7 +212,9 @@ fn check_e1609_unguarded_due_date_objectives(objectives: &[&Objective]) -> Resul
         })
     };
 
-    let Some(due_date_tier) = tier_of(|objective| matches!(objective, MinimizeLateJobs | MinimizeTardiness)) else {
+    let Some(due_date_tier) =
+        tier_of(|objective| matches!(objective, MinimizeLateJobs | MinimizeTardiness | MinimizeDueWindowUse))
+    else {
         return Ok(());
     };
     let guard_tier = tier_of(|objective| matches!(objective, MinimizeUnassigned { .. } | MaximizeValue { .. }));
@@ -223,8 +225,9 @@ fn check_e1609_unguarded_due_date_objectives(objectives: &[&Objective]) -> Resul
         Err(FormatError::new(
             "E1609".to_string(),
             "missing an objective which forces assignment above due-date objectives".to_string(),
-            "add 'minimize-unassigned' or 'maximize-value' before 'minimize-late-jobs' and 'minimize-tardiness': \
-             otherwise they drop jobs which are not yet due to serve due ones sooner"
+            "add 'minimize-unassigned' or 'maximize-value' before 'minimize-late-jobs', 'minimize-tardiness' \
+             and 'minimize-due-window-use': otherwise they drop jobs which are not yet due to serve due ones \
+             sooner"
                 .to_string(),
         ))
     }

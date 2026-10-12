@@ -204,6 +204,9 @@ fn get_objective_feature_layer(
         Objective::FastService => get_fast_service_feature("fast_service", blocks),
         Objective::MinimizeLateJobs => get_due_date_feature("min_late_jobs", DueDateMeasure::LateJobs, blocks),
         Objective::MinimizeTardiness => get_due_date_feature("min_tardiness", DueDateMeasure::Tardiness, blocks),
+        Objective::MinimizeDueWindowUse => {
+            get_due_date_feature("min_due_window_use", DueDateMeasure::WindowUse, blocks)
+        }
         Objective::MinimizeDepotTravelTime { cap } => create_minimize_depot_travel_time_feature(
             "min_depot_travel",
             blocks.transport.clone(),

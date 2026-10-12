@@ -4,7 +4,11 @@ use crate::helpers::*;
 
 #[test]
 fn can_round_trip_due_date_objectives() {
-    for json in [r#"{"type":"minimize-late-jobs"}"#, r#"{"type":"minimize-tardiness"}"#] {
+    for json in [
+        r#"{"type":"minimize-late-jobs"}"#,
+        r#"{"type":"minimize-tardiness"}"#,
+        r#"{"type":"minimize-due-window-use"}"#,
+    ] {
         let objective: Objective = serde_json::from_str(json).expect("cannot deserialize objective");
 
         assert_eq!(serde_json::to_string(&objective).expect("cannot serialize objective"), json);
@@ -90,6 +94,11 @@ mod across_a_month {
     const DAY: f64 = 86400.;
     const HOUR: f64 = 3600.;
 
+    /// The end of the given day, as a due date meaning "any time that day" is sent.
+    fn end_of_day(day: usize) -> f64 {
+        (day + 1) as f64 * DAY - 1.
+    }
+
     fn job(id: &str, x: f64, hours: f64, due: Option<f64>, not_before: Option<f64>) -> Job {
         let place = JobPlace {
             duration: hours * HOUR,
@@ -110,7 +119,13 @@ mod across_a_month {
     }
 
     fn solve(jobs: Vec<Job>) -> (Vec<(String, usize)>, Vec<String>) {
-        let objectives = vec![MinimizeUnassigned { breaks: None }, MinimizeLateJobs, MinimizeTardiness, MinimizeCost];
+        let objectives = vec![
+            MinimizeUnassigned { breaks: None },
+            MinimizeLateJobs,
+            MinimizeTardiness,
+            MinimizeDueWindowUse,
+            MinimizeCost,
+        ];
 
         solve_plan(Plan { jobs, ..create_empty_plan() }, objectives)
     }
@@ -162,6 +177,29 @@ mod across_a_month {
         (days, unassigned)
     }
 
+    #[test]
+    fn spreads_weeklies_across_their_weeks() {
+        // A due date alone puts all four on one visit, each on time. With its week as a time
+        // window too, window use serves each at the start of its week.
+        let jobs = (0..4)
+            .map(|week| {
+                let monday = (7 * week) as f64 * DAY;
+                job(&format!("weekly{week}"), 5., 1., Some(end_of_day(7 * week + 4)), Some(monday))
+            })
+            .collect();
+
+        let days = solve(jobs).0.into_iter().map(|(_, day)| day).collect::<Vec<_>>();
+
+        assert_eq!(days, vec![0, 7, 14, 21]);
+    }
+
+    #[test]
+    fn serves_a_dated_job_in_the_first_shift() {
+        let jobs = std::iter::once(job("annual", 50., 7., Some(end_of_day(17)), None)).chain(fillers(5)).collect();
+
+        assert_eq!(solve(jobs).0, vec![("annual".to_string(), 0)]);
+    }
+
     parameterized_test! {keeps_dated_work_over_undated_work_in_a_full_month, due, {
         // 21 jobs for 20 shifts, and cost alone would drop the dated one as the furthest away
         let jobs = std::iter::once(job("dated", 50., 7., Some(due), None)).chain(fillers(20)).collect();
@@ -173,5 +211,7 @@ mod across_a_month {
 
     keeps_dated_work_over_undated_work_in_a_full_month! {
         case_01_overdue: -5. * DAY,
+        case_02_due_after_the_last_shift: end_of_day(25),
+        case_03_due_a_week_after_the_plan: end_of_day(32),
     }
 }

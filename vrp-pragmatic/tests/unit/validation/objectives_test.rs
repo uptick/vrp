@@ -268,11 +268,13 @@ parameterized_test! {can_detect_unguarded_due_date_objectives, (objectives, expe
 
 can_detect_unguarded_due_date_objectives! {
     case01_no_guard: (vec![MinimizeLateJobs, MinimizeCost], true),
-    case02_guarded_by_unassigned: (vec![MinimizeUnassigned { breaks: None }, MinimizeLateJobs, MinimizeTardiness], false),
-    case03_guarded_by_value: (vec![MaximizeValue { breaks: None }, MinimizeTardiness, MinimizeCost], false),
+    case02_window_use_no_guard: (vec![MinimizeDueWindowUse, MinimizeCost], true),
+    case03_guarded_by_unassigned: (
+        vec![MinimizeUnassigned { breaks: None }, MinimizeLateJobs, MinimizeTardiness, MinimizeDueWindowUse], false),
+    case04_guarded_by_value: (vec![MaximizeValue { breaks: None }, MinimizeTardiness, MinimizeCost], false),
     // the guard has to outrank every due-date objective, not just the first one
-    case04_guard_between: (vec![MinimizeLateJobs, MinimizeUnassigned { breaks: None }, MinimizeTardiness], true),
-    case05_guard_in_same_tier: (
+    case05_guard_between: (vec![MinimizeLateJobs, MinimizeUnassigned { breaks: None }, MinimizeTardiness], true),
+    case06_guard_in_same_tier: (
         vec![
             MultiObjective {
                 strategy: MultiStrategy::Sum,
@@ -281,5 +283,5 @@ can_detect_unguarded_due_date_objectives! {
             MinimizeCost,
         ],
         true),
-    case06_objectives_absent: (vec![MinimizeUnassigned { breaks: None }, MinimizeCost], false),
+    case07_objectives_absent: (vec![MinimizeUnassigned { breaks: None }, MinimizeCost], false),
 }

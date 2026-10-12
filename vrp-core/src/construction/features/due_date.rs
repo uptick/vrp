@@ -1,7 +1,8 @@
-//! Objectives which score jobs against their due dates: how many are late, and how late. Rank
-//! them in that order: the count decides how many jobs are late, the sum how late the rest are.
-//! The sum alone would make five jobs a day late to save one five days late; the count alone
-//! gives the search no gradient between improvements.
+//! Objectives which score jobs against their due dates: how many are late, how late, and how
+//! early in their window they are served. Rank them in that order: the count decides how many
+//! jobs are late, the sum how late the rest are, and window use only orders jobs which are on
+//! time. The sum alone would make five jobs a day late to save one five days late; the count
+//! alone gives the search no gradient between improvements.
 //!
 //! A due date is soft, so it never makes a job unassignable. A job left unassigned is scored as
 //! arriving when the plan ends, which no served job arrives after, so dropping a job never scores
@@ -27,6 +28,12 @@ pub enum DueDateMeasure {
     LateJobs,
     /// How long after its due date a job arrives.
     Tardiness,
+    /// How much of its window has passed when a job arrives, from 0 to 1. The window runs from
+    /// when the job may first be served (the plan start, or its earliest time window if later) to
+    /// its due date. A share rather than a duration, so a day counts for more against a weekly's
+    /// week than an annual's year, and dropping work due soon after the plan costs more than
+    /// dropping work due much later.
+    WindowUse,
 }
 
 /// Creates a feature which minimizes the given due-date measure.
@@ -46,6 +53,7 @@ pub fn create_due_date_feature(
             measure,
             job_due_date_fn,
             transport,
+            plan_start: get_earliest_shift_start(fleet),
             plan_end: shift_ends.max_by(Float::total_cmp),
         })
         .build()
@@ -55,6 +63,7 @@ struct DueDateObjective {
     measure: DueDateMeasure,
     job_due_date_fn: JobDueDateFn,
     transport: Arc<dyn TransportCost>,
+    plan_start: Timestamp,
     plan_end: Option<Timestamp>,
 }
 
@@ -69,7 +78,7 @@ impl FeatureObjective for DueDateObjective {
                 let arrival =
                     tour.job_activities(job).map(|activity| activity.schedule.arrival).max_by(Float::total_cmp)?;
 
-                Some(self.score(arrival, due_date))
+                Some(self.score(job, arrival, due_date))
             })
         });
 
@@ -82,7 +91,7 @@ impl FeatureObjective for DueDateObjective {
             .solution
             .unassigned
             .keys()
-            .filter_map(|job| Some(self.score(plan_end?, (self.job_due_date_fn)(job)?)));
+            .filter_map(|job| Some(self.score(job, plan_end?, (self.job_due_date_fn)(job)?)));
 
         served.chain(dropped).sum()
     }
@@ -102,15 +111,29 @@ impl FeatureObjective for DueDateObjective {
         // NOTE: scores only the inserted job, not how the insertion delays the jobs after it
         let (_, (prev_to_target_duration, _)) = calculate_travel(route_ctx, activity_ctx, self.transport.as_ref());
 
-        self.score(activity_ctx.prev.schedule.departure + prev_to_target_duration, due_date)
+        self.score(&job, activity_ctx.prev.schedule.departure + prev_to_target_duration, due_date)
     }
 }
 
 impl DueDateObjective {
-    fn score(&self, arrival: Timestamp, due_date: Timestamp) -> Cost {
+    fn score(&self, job: &Job, arrival: Timestamp, due_date: Timestamp) -> Cost {
         match self.measure {
             DueDateMeasure::LateJobs => Cost::from(arrival > due_date),
             DueDateMeasure::Tardiness => (arrival - due_date).max(0.),
+            DueDateMeasure::WindowUse => {
+                // offset time windows are relative to a tour, so only absolute ones count
+                let release = job
+                    .places()
+                    .flat_map(|place| place.times.iter())
+                    .filter_map(|time| time.as_time_window())
+                    .map(|window| window.start)
+                    .min_by(Float::total_cmp)
+                    .map_or(self.plan_start, |start| start.max(self.plan_start));
+                let window = due_date - release;
+
+                // a job due before it may be served is overdue: tardiness orders those
+                if window > 0. { ((arrival - release) / window).clamp(0., 1.) } else { 1. }
+            }
         }
     }
 }

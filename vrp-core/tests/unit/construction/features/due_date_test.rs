@@ -66,6 +66,8 @@ can_score_served_jobs! {
     case_03_tardiness_on_time: (DueDateMeasure::Tardiness, vec![50., 100.], 0.),
     // early arrival is no credit against late
     case_04_tardiness_some_late: (DueDateMeasure::Tardiness, vec![0., 110., 130.], 40.),
+    case_05_window_use: (DueDateMeasure::WindowUse, vec![0., 50.], 0.5),
+    case_06_window_use_capped_when_late: (DueDateMeasure::WindowUse, vec![150.], 1.),
 }
 
 #[test]
@@ -90,6 +92,9 @@ can_score_a_dropped_job_as_arriving_at_the_plan_end! {
     // a later plan can still serve it on time
     case_02_late_jobs_due_after_plan: (DueDateMeasure::LateJobs, 2000., 0.),
     case_03_tardiness_due_in_plan: (DueDateMeasure::Tardiness, DUE_DATE, 900.),
+    case_04_window_use_due_in_plan: (DueDateMeasure::WindowUse, DUE_DATE, 1.),
+    case_05_window_use_due_soon_after_plan: (DueDateMeasure::WindowUse, 1250., 0.8),
+    case_06_window_use_due_long_after_plan: (DueDateMeasure::WindowUse, 4000., 0.25),
 }
 
 #[test]
@@ -103,11 +108,24 @@ fn can_end_an_open_ended_plan_at_its_latest_arrival() {
     assert_eq!(tardiness.fitness(&ctx), 200. + 400. + 400.);
 }
 
+parameterized_test! {can_open_the_window_at_the_jobs_time_window, (window_start, arrival, expected), {
+    let job = TestSingleBuilder::default().times(vec![TimeWindow::new(window_start, 1000.)]).build_shared();
+    let ctx = context_with(vec![route_serving(vec![(job, arrival)])], false);
+
+    assert_eq!(objective(DueDateMeasure::WindowUse, Some(DUE_DATE)).fitness(&ctx), expected);
+}}
+
+can_open_the_window_at_the_jobs_time_window! {
+    case_01_halfway_through_a_later_window: (60., 80., 0.5),
+    // due before it may be served: it is overdue, and there is no window to use
+    case_02_window_opens_after_due: (200., 200., 1.),
+}
+
 #[test]
 fn can_ignore_jobs_without_a_due_date() {
     let ctx = context_with(vec![route_with_arrivals(&[5000.])], true);
 
-    for measure in [DueDateMeasure::LateJobs, DueDateMeasure::Tardiness] {
+    for measure in [DueDateMeasure::LateJobs, DueDateMeasure::Tardiness, DueDateMeasure::WindowUse] {
         assert_eq!(objective(measure, None).fitness(&ctx), 0.);
     }
 }
@@ -130,6 +148,7 @@ can_estimate_an_insertion! {
     case_01_late_jobs_on_time: (DueDateMeasure::LateJobs, 100., 0.),
     case_02_late_jobs_late: (DueDateMeasure::LateJobs, 160., 1.),
     case_03_tardiness: (DueDateMeasure::Tardiness, 160., 60.),
+    case_04_window_use: (DueDateMeasure::WindowUse, 25., 0.25),
 }
 
 #[test]
