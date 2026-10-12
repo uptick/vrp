@@ -115,6 +115,11 @@ pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Float>,
 
+    /// A soft deadline for arriving at the job: an RFC3339 date-time with its UTC offset. A due
+    /// date with no time of day is sent as the end of that day in the job's timezone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+
     /// Job group: jobs of the same group are assigned to the same tour or unassigned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,

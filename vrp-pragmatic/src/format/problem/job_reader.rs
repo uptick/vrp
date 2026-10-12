@@ -421,6 +421,10 @@ fn fill_dimens(job: &ApiJob, dimens: &mut Dimensions) {
         dimens.set_job_value(value);
     }
 
+    if let Some(due) = job.due.as_ref() {
+        dimens.set_job_due_date(parse_time(due));
+    }
+
     if let Some(group) = job.group.clone() {
         dimens.set_job_group(group);
     }
