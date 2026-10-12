@@ -3,7 +3,7 @@ use crate::format::problem::*;
 use crate::format::{CoordIndex, Location};
 use crate::format_time;
 use crate::helpers::ToLocation;
-use vrp_core::models::common::Duration;
+use vrp_core::models::common::{Duration, Timestamp};
 use vrp_core::prelude::Float;
 
 pub fn create_job_place(location: (f64, f64), tag: Option<String>) -> JobPlace {
@@ -105,6 +105,10 @@ pub fn create_delivery_job_with_times(
 
 pub fn create_delivery_job_with_value(id: &str, location: (f64, f64), value: Float) -> Job {
     Job { deliveries: Some(vec![create_task(location, None)]), value: Some(value), ..create_job(id) }
+}
+
+pub fn create_delivery_job_with_due_date(id: &str, location: (f64, f64), due: Timestamp) -> Job {
+    Job { deliveries: Some(vec![create_task(location, None)]), due: Some(format_time(due)), ..create_job(id) }
 }
 
 pub fn create_pickup_job(id: &str, location: (f64, f64)) -> Job {

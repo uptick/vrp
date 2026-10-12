@@ -623,6 +623,12 @@ pub enum Objective {
     /// An objective to prefer jobs to be served as soon as possible.
     FastService,
 
+    /// An objective to minimize how many jobs are served after their `due` date.
+    MinimizeLateJobs,
+
+    /// An objective to minimize how long after their `due` date jobs are served, in total.
+    MinimizeTardiness,
+
     /// An objective to prefer assigning jobs close (by travel time) to the vehicle's depot
     /// (shift start).
     MinimizeDepotTravelTime {

@@ -255,3 +255,31 @@ fn can_detect_unguarded_prefer_early_tours_impl(objectives: Vec<Objective>, expe
 
     assert_eq!(result.err().map(|err| err.code), expected);
 }
+
+parameterized_test! {can_detect_unguarded_due_date_objectives, (objectives, expected), {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+    let result = check_e1609_unguarded_due_date_objectives(&get_objectives(&ctx).unwrap());
+
+    assert_eq!(result.err().map(|err| err.code), expected.then(|| "E1609".to_string()));
+}}
+
+can_detect_unguarded_due_date_objectives! {
+    case01_no_guard: (vec![MinimizeLateJobs, MinimizeCost], true),
+    case02_guarded_by_unassigned: (vec![MinimizeUnassigned { breaks: None }, MinimizeLateJobs, MinimizeTardiness], false),
+    case03_guarded_by_value: (vec![MaximizeValue { breaks: None }, MinimizeTardiness, MinimizeCost], false),
+    // the guard has to outrank every due-date objective, not just the first one
+    case04_guard_between: (vec![MinimizeLateJobs, MinimizeUnassigned { breaks: None }, MinimizeTardiness], true),
+    case05_guard_in_same_tier: (
+        vec![
+            MultiObjective {
+                strategy: MultiStrategy::Sum,
+                objectives: vec![MinimizeUnassigned { breaks: None }, MinimizeTardiness],
+            },
+            MinimizeCost,
+        ],
+        true),
+    case06_objectives_absent: (vec![MinimizeUnassigned { breaks: None }, MinimizeCost], false),
+}
