@@ -214,4 +214,19 @@ mod across_a_month {
         case_02_due_after_the_last_shift: end_of_day(25),
         case_03_due_a_week_after_the_plan: end_of_day(32),
     }
+
+    #[test]
+    fn keeps_a_job_due_after_the_last_shift_with_a_horizon() {
+        // The job is due after the plan's last shift ends, so without a horizon dropping it is
+        // not late. Window use would keep it anyway, so it is left out to test the horizon alone.
+        let jobs = std::iter::once(job("dated", 50., 7., Some(end_of_day(25)), None)).chain(fillers(20)).collect();
+        let plan = Plan { jobs, horizon: Some(Horizon { end: format_time(26. * DAY) }), ..create_empty_plan() };
+
+        let (days, _) = solve_plan(
+            plan,
+            vec![MinimizeUnassigned { breaks: None }, MinimizeLateJobs, MinimizeTardiness, MinimizeCost],
+        );
+
+        assert_eq!(days.len(), 1);
+    }
 }

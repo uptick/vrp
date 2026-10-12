@@ -91,3 +91,19 @@ can_detect_invalid_due_date! {
     case04_out_of_range: (Some("2024-13-04T17:00:00Z"), true),
     case05_not_a_date: (Some("tomorrow"), true),
 }
+
+parameterized_test! {can_detect_invalid_horizon_end, (end, is_invalid), {
+    let horizon = end.map(|end: &str| Horizon { end: end.to_string() });
+    let problem = Problem { plan: Plan { horizon, ..create_empty_plan() }, ..create_empty_problem() };
+
+    let result = check_e1109_invalid_horizon_end(&ValidationContext::new(&problem, None, &CoordIndex::new(&problem)));
+
+    assert_eq!(result.err().map(|err| err.code), is_invalid.then(|| "E1109".to_string()));
+}}
+
+can_detect_invalid_horizon_end! {
+    case01_absent: (None, false),
+    case02_rfc3339: (Some("2024-07-31T23:59:59+10:00"), false),
+    case03_date_only: (Some("2024-07-31"), true),
+    case04_not_a_date: (Some("end of month"), true),
+}

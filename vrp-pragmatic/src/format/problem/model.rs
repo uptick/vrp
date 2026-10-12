@@ -230,6 +230,18 @@ pub struct Plan {
     /// Specifies clustering parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clustering: Option<Clustering>,
+
+    /// Specifies the planning horizon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<Horizon>,
+}
+
+/// Specifies the period a plan covers.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+pub struct Horizon {
+    /// When the plan ends, in RFC3339, if later than its last shift end: due-date objectives
+    /// score a job left unassigned as served then.
+    pub end: String,
 }
 
 // endregion

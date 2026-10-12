@@ -202,6 +202,17 @@ fn check_e1108_invalid_due_date(ctx: &ValidationContext) -> Result<(), FormatErr
     }
 }
 
+fn check_e1109_invalid_horizon_end(ctx: &ValidationContext) -> Result<(), FormatError> {
+    match ctx.problem.plan.horizon.as_ref() {
+        Some(horizon) if parse_time_safe(&horizon.end).is_err() => Err(FormatError::new(
+            "E1109".to_string(),
+            "plan has an invalid horizon end".to_string(),
+            "use an RFC3339 date-time with a UTC offset for 'end' in the plan's horizon".to_string(),
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Validates jobs from the plan.
 pub fn validate_jobs(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     combine_error_results(&[
@@ -214,6 +225,7 @@ pub fn validate_jobs(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
         check_e1106_negative_duration(ctx),
         check_e1107_negative_demand(ctx),
         check_e1108_invalid_due_date(ctx),
+        check_e1109_invalid_horizon_end(ctx),
     ])
     .map_err(From::from)
 }

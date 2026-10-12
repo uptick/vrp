@@ -28,6 +28,8 @@ are already published. So, I stick to it for now.
 * add an optional `due` date on a job, read by the `minimize-late-jobs`, `minimize-tardiness` and `minimize-due-window-use`
   objectives (rank them in that order). A due date is soft: it never makes a job unassignable, and a job left
   unassigned is scored as served when the plan ends
+* add an optional `plan.horizon.end` for when the plan ends later than its last shift, such as with a job due at the end
+  of the plan's last day
 
 
 ## [1.25.0] 2024-11-10

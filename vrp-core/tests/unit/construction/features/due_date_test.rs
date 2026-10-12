@@ -7,17 +7,22 @@ use crate::models::common::Schedule;
 // The test fleet's single shift runs from 0 to `DEFAULT_ACTOR_TIME_WINDOW.end` (1000).
 const DUE_DATE: Timestamp = 100.;
 
-fn objective_with(measure: DueDateMeasure, due_date: Option<Timestamp>, fleet: &Fleet) -> Arc<dyn FeatureObjective> {
+fn objective_with(
+    measure: DueDateMeasure,
+    due_date: Option<Timestamp>,
+    fleet: &Fleet,
+    horizon_end: Option<Timestamp>,
+) -> Arc<dyn FeatureObjective> {
     let job_due_date_fn: JobDueDateFn = Arc::new(move |_| due_date);
 
-    create_due_date_feature("due_date", measure, job_due_date_fn, TestTransportCost::new_shared(), fleet)
+    create_due_date_feature("due_date", measure, job_due_date_fn, TestTransportCost::new_shared(), fleet, horizon_end)
         .unwrap()
         .objective
         .unwrap()
 }
 
 fn objective(measure: DueDateMeasure, due_date: Option<Timestamp>) -> Arc<dyn FeatureObjective> {
-    objective_with(measure, due_date, &test_fleet())
+    objective_with(measure, due_date, &test_fleet(), None)
 }
 
 /// A route serving each given job at the given arrival time.
@@ -97,15 +102,30 @@ can_score_a_dropped_job_as_arriving_at_the_plan_end! {
     case_06_window_use_due_long_after_plan: (DueDateMeasure::WindowUse, 4000., 0.25),
 }
 
+parameterized_test! {can_end_the_plan_at_a_later_horizon, (horizon_end, due_date, expected), {
+    let late_jobs = objective_with(DueDateMeasure::LateJobs, Some(due_date), &test_fleet(), horizon_end);
+
+    assert_eq!(late_jobs.fitness(&context_with(vec![], true)), expected);
+}}
+
+can_end_the_plan_at_a_later_horizon! {
+    case_01_no_horizon: (None, 1100., 0.),
+    // a job due after the last shift ends, but before the horizon, cannot be served on time later
+    case_02_due_before_horizon: (Some(1200.), 1100., 1.),
+    // a horizon before the last shift end is ignored: work is served up to that end regardless
+    case_03_earlier_horizon_ignored: (Some(500.), 900., 1.),
+}
+
 #[test]
 fn can_end_an_open_ended_plan_at_its_latest_arrival() {
     // no served job is ever scored as arriving after a dropped one
     let fleet = FleetBuilder::default().add_driver(test_driver()).add_vehicle(test_ovrp_vehicle("v1")).build();
     let ctx = context_with(vec![route_with_arrivals(&[300., 500.])], true);
 
-    let tardiness = objective_with(DueDateMeasure::Tardiness, Some(DUE_DATE), &fleet);
+    let tardiness = |horizon_end| objective_with(DueDateMeasure::Tardiness, Some(DUE_DATE), &fleet, horizon_end);
 
-    assert_eq!(tardiness.fitness(&ctx), 200. + 400. + 400.);
+    assert_eq!(tardiness(None).fitness(&ctx), 200. + 400. + 400.);
+    assert_eq!(tardiness(Some(800.)).fitness(&ctx), 200. + 400. + 700.);
 }
 
 parameterized_test! {can_open_the_window_at_the_jobs_time_window, (window_start, arrival, expected), {

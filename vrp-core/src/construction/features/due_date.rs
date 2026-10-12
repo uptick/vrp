@@ -6,7 +6,9 @@
 //!
 //! A due date is soft, so it never makes a job unassignable. A job left unassigned is scored as
 //! arriving when the plan ends, which no served job arrives after, so dropping a job never scores
-//! better than serving it. The plan ends at the last shift end.
+//! better than serving it. The plan ends at the last shift end, or at a later horizon end when
+//! one is given: a job due after the last shift on the plan's final day still cannot be served
+//! on time once the plan is over.
 //!
 //! Lateness is measured from arrival, so a due date means "be there by": a caller who means
 //! "any time that day" sends the end of the day.
@@ -36,13 +38,15 @@ pub enum DueDateMeasure {
     WindowUse,
 }
 
-/// Creates a feature which minimizes the given due-date measure.
+/// Creates a feature which minimizes the given due-date measure. `horizon_end` moves the plan's
+/// end past its last shift end; an earlier one is ignored.
 pub fn create_due_date_feature(
     name: &str,
     measure: DueDateMeasure,
     job_due_date_fn: JobDueDateFn,
     transport: Arc<dyn TransportCost>,
     fleet: &Fleet,
+    horizon_end: Option<Timestamp>,
 ) -> GenericResult<Feature> {
     // open-ended shifts end at `Float::MAX`
     let shift_ends = fleet.actors.iter().map(|actor| actor.detail.time.end).filter(|&end| end < Float::MAX);
@@ -54,7 +58,7 @@ pub fn create_due_date_feature(
             job_due_date_fn,
             transport,
             plan_start: get_earliest_shift_start(fleet),
-            plan_end: shift_ends.max_by(Float::total_cmp),
+            plan_end: shift_ends.chain(horizon_end).max_by(Float::total_cmp),
         })
         .build()
 }
