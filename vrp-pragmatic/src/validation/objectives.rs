@@ -199,6 +199,40 @@ fn check_e1608_unguarded_prefer_early_tours(objectives: &[&Objective]) -> Result
     }
 }
 
+/// Checks that an objective forcing assignment is ranked above every due-date objective.
+///
+/// They score a dropped job as served when the plan ends, so dropping due work never helps them,
+/// but dropping work which is not yet due costs them little or nothing: ranked above every guard,
+/// they would drop it to serve due work sooner.
+fn check_e1609_unguarded_due_date_objectives(objectives: &[&Objective]) -> Result<(), FormatError> {
+    let tier_of = |predicate: fn(&Objective) -> bool| {
+        objectives.iter().position(|objective| match objective {
+            MultiObjective { objectives, .. } => objectives.iter().any(predicate),
+            objective => predicate(objective),
+        })
+    };
+
+    let Some(due_date_tier) =
+        tier_of(|objective| matches!(objective, MinimizeLateJobs | MinimizeTardiness | MinimizeDueWindowUse))
+    else {
+        return Ok(());
+    };
+    let guard_tier = tier_of(|objective| matches!(objective, MinimizeUnassigned { .. } | MaximizeValue { .. }));
+
+    if guard_tier.is_some_and(|guard_tier| guard_tier < due_date_tier) {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1609".to_string(),
+            "missing an objective which forces assignment above due-date objectives".to_string(),
+            "add 'minimize-unassigned' or 'maximize-value' before 'minimize-late-jobs', 'minimize-tardiness' \
+             and 'minimize-due-window-use': otherwise they drop jobs which are not yet due to serve due ones \
+             sooner"
+                .to_string(),
+        ))
+    }
+}
+
 fn get_objectives<'a>(ctx: &'a ValidationContext) -> Option<Vec<&'a Objective>> {
     ctx.problem.objectives.as_ref().map(|objectives| objectives.iter().collect())
 }
@@ -222,6 +256,7 @@ pub fn validate_objectives(ctx: &ValidationContext) -> Result<(), MultiFormatErr
             check_e1606_check_multiple_cost_objectives(&objectives),
             check_e1607_jobs_with_value_but_no_objective(ctx, &objectives),
             check_e1608_unguarded_prefer_early_tours(&objectives),
+            check_e1609_unguarded_due_date_objectives(&objectives),
         ])
         .map_err(From::from)
     } else {

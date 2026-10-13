@@ -7,6 +7,7 @@ fn can_generate_bounding_box() {
         jobs: vec![create_test_job(-1., 1.), create_test_job(1., 0.), create_test_job(3., 1.), create_test_job(1., 2.)],
         relations: None,
         clustering: None,
+        horizon: None,
     };
 
     let ((min_lat, min_lng), (max_lat, max_lng)) = get_bounding_box_from_plan(&plan);
@@ -23,6 +24,7 @@ fn can_get_bounding_box_from_size() {
         jobs: vec![create_test_job(0., 1.), create_test_job(1., 0.), create_test_job(0., 0.), create_test_job(1., 1.)],
         relations: None,
         clustering: None,
+        horizon: None,
     };
 
     let ((min_lat, min_lng), (max_lat, max_lng)) = get_bounding_box_from_size(&plan, 100.);

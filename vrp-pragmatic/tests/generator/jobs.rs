@@ -70,6 +70,7 @@ prop_compose! {
     ) -> Job {
        Job {
             id: Uuid::new_v4().to_string(),
+            due: None,
             pickups: Some(vec![
              JobTask { places: vec![
                     JobPlace {
@@ -130,6 +131,7 @@ prop_compose! {
     ) -> Job {
         Job {
             id: Uuid::new_v4().to_string(),
+            due: None,
             pickups,
             deliveries,
             replacements,

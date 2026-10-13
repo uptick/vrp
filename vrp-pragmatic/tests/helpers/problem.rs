@@ -3,7 +3,7 @@ use crate::format::problem::*;
 use crate::format::{CoordIndex, Location};
 use crate::format_time;
 use crate::helpers::ToLocation;
-use vrp_core::models::common::Duration;
+use vrp_core::models::common::{Duration, Timestamp};
 use vrp_core::prelude::Float;
 
 pub fn create_job_place(location: (f64, f64), tag: Option<String>) -> JobPlace {
@@ -23,6 +23,7 @@ pub fn create_job(id: &str) -> Job {
         services: None,
         skills: None,
         value: None,
+        due: None,
         group: None,
         compatibility: None,
     }
@@ -104,6 +105,10 @@ pub fn create_delivery_job_with_times(
 
 pub fn create_delivery_job_with_value(id: &str, location: (f64, f64), value: Float) -> Job {
     Job { deliveries: Some(vec![create_task(location, None)]), value: Some(value), ..create_job(id) }
+}
+
+pub fn create_delivery_job_with_due_date(id: &str, location: (f64, f64), due: Timestamp) -> Job {
+    Job { deliveries: Some(vec![create_task(location, None)]), due: Some(format_time(due)), ..create_job(id) }
 }
 
 pub fn create_pickup_job(id: &str, location: (f64, f64)) -> Job {
@@ -270,7 +275,7 @@ pub fn create_min_jobs_cost_objective() -> Option<Vec<Objective>> {
 }
 
 pub fn create_empty_plan() -> Plan {
-    Plan { jobs: vec![], relations: None, clustering: None }
+    Plan { jobs: vec![], relations: None, clustering: None, horizon: None }
 }
 
 pub fn create_empty_problem() -> Problem {

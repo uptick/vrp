@@ -25,6 +25,11 @@ are already published. So, I stick to it for now.
 * add `prefer-early-tours` objective which schedules work in the earliest shifts of the planning period without biasing job order within a day
 * add an optional `id` property to vehicle breaks (both optional and required) which is propagated back to the
   solution as `breakId` on break activities and on break violations
+* add an optional `due` date on a job, read by the `minimize-late-jobs`, `minimize-tardiness` and `minimize-due-window-use`
+  objectives (rank them in that order). A due date is soft: it never makes a job unassignable, and a job left
+  unassigned is scored as served when the plan ends
+* add an optional `plan.horizon.end` for when the plan ends later than its last shift, such as with a job due at the end
+  of the plan's last day
 
 
 ## [1.25.0] 2024-11-10

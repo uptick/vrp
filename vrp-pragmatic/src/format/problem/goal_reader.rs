@@ -4,7 +4,7 @@ use vrp_core::algorithms::clustering::kmedoids::create_hierarchical_kmedoids;
 use vrp_core::construction::clustering::vicinity::ClusterInfoDimension;
 use vrp_core::construction::enablers::FeatureCombinator;
 use vrp_core::construction::features::*;
-use vrp_core::models::common::{Demand, Duration, LoadOps, MultiDimLoad, SingleDimLoad};
+use vrp_core::models::common::{Demand, Duration, LoadOps, MultiDimLoad, SingleDimLoad, Timestamp};
 use vrp_core::models::problem::{Actor, Single, TransportCost};
 use vrp_core::models::solution::Route;
 use vrp_core::models::{Feature, FeatureObjective, GoalBuilder, GoalContext, GoalContextBuilder};
@@ -93,10 +93,11 @@ fn get_objective_feature_layers(
     props: &ProblemProperties,
 ) -> GenericResult<Vec<FeatureLayer>> {
     let objectives = get_objectives(api_problem, props);
+    let horizon_end = api_problem.plan.horizon.as_ref().map(|horizon| parse_time(&horizon.end));
 
     objectives
         .iter()
-        .map(|objective| get_objective_feature_layer(objective, blocks, props))
+        .map(|objective| get_objective_feature_layer(objective, blocks, props, horizon_end))
         .collect::<GenericResult<_>>()
 }
 
@@ -104,6 +105,7 @@ fn get_objective_feature_layer(
     objective: &Objective,
     blocks: &ProblemBlocks,
     props: &ProblemProperties,
+    horizon_end: Option<Timestamp>,
 ) -> GenericResult<FeatureLayer> {
     let feature = match objective {
         Objective::MinimizeCost => TransportFeatureBuilder::new("min_cost")
@@ -202,6 +204,15 @@ fn get_objective_feature_layer(
         }
         Objective::TourOrder => create_tour_order_soft_feature("tour_order", get_tour_order_fn()),
         Objective::FastService => get_fast_service_feature("fast_service", blocks),
+        Objective::MinimizeLateJobs => {
+            get_due_date_feature("min_late_jobs", DueDateMeasure::LateJobs, blocks, horizon_end)
+        }
+        Objective::MinimizeTardiness => {
+            get_due_date_feature("min_tardiness", DueDateMeasure::Tardiness, blocks, horizon_end)
+        }
+        Objective::MinimizeDueWindowUse => {
+            get_due_date_feature("min_due_window_use", DueDateMeasure::WindowUse, blocks, horizon_end)
+        }
         Objective::MinimizeDepotTravelTime { cap } => create_minimize_depot_travel_time_feature(
             "min_depot_travel",
             blocks.transport.clone(),
@@ -212,7 +223,7 @@ fn get_objective_feature_layer(
         Objective::MultiObjective { objectives, strategy: composition_type } => {
             let features = objectives
                 .iter()
-                .map(|o| get_objective_feature_layer(o, blocks, props))
+                .map(|o| get_objective_feature_layer(o, blocks, props, horizon_end))
                 .map(|layer| match layer {
                     Ok(FeatureLayer::Single(feature)) => Ok(feature),
                     Ok(FeatureLayer::Multi { .. }) => {
@@ -371,6 +382,17 @@ fn get_capacity_feature(
     } else {
         CapacityFeatureBuilder::<SingleDimLoad>::new(name).set_violation_code(CAPACITY_CONSTRAINT_CODE).build()
     }
+}
+
+fn get_due_date_feature(
+    name: &str,
+    measure: DueDateMeasure,
+    blocks: &ProblemBlocks,
+    horizon_end: Option<Timestamp>,
+) -> GenericResult<Feature> {
+    let job_due_date_fn: JobDueDateFn = Arc::new(|job| job.dimens().get_job_due_date().copied());
+
+    create_due_date_feature(name, measure, job_due_date_fn, blocks.transport.clone(), &blocks.fleet, horizon_end)
 }
 
 fn get_fast_service_feature(name: &str, blocks: &ProblemBlocks) -> GenericResult<Feature> {

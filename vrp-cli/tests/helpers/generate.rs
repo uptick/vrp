@@ -10,6 +10,7 @@ pub fn create_empty_job() -> Job {
         services: None,
         skills: None,
         value: None,
+        due: None,
         group: None,
         compatibility: None,
     }
@@ -24,7 +25,7 @@ pub fn create_empty_job_place() -> JobPlace {
 }
 
 pub fn create_empty_plan() -> Plan {
-    Plan { jobs: vec![], relations: None, clustering: None }
+    Plan { jobs: vec![], relations: None, clustering: None, horizon: None }
 }
 
 pub fn create_test_vehicle_type() -> VehicleType {
