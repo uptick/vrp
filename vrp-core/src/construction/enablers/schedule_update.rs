@@ -73,8 +73,17 @@ fn apply_first_job_arrival_floor(route_ctx: &mut RouteContext, transport: &dyn T
         return;
     }
     let first_location = first_stop.place.location;
-    let travel = transport.duration(route_ctx.route(), start_location, first_location, TravelTime::Arrival(*floor));
-    let target_departure = *floor - travel;
+    let route = route_ctx.route();
+    let travel = transport.duration(route, start_location, first_location, TravelTime::Arrival(*floor));
+    let mut target_departure = *floor - travel;
+    // Reserved time can be charged to travel timed back from the floor but missed by travel timed
+    // forward from the departure that produces (a zero-length leg touching a break that starts at
+    // the floor), which would reach the first job before the floor. Depart later by the shortfall.
+    let arrival = target_departure
+        + transport.duration(route, start_location, first_location, TravelTime::Departure(target_departure));
+    if arrival < *floor {
+        target_departure += *floor - arrival;
+    }
     if target_departure > start_departure {
         route_ctx.route_mut().tour.get_mut(0).unwrap().schedule.departure = target_departure;
     }
