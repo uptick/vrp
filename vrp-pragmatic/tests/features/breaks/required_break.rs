@@ -81,19 +81,33 @@ fn can_assign_break_during_travel() {
     );
 }
 
-#[test]
-fn can_assign_break_during_activity() {
+parameterized_test! {can_take_break_before_activity_instead_of_interrupting_it, (earliest, expected_break, expected_job, expected_waiting), {
+    can_take_break_before_activity_instead_of_interrupting_it_impl(earliest, expected_break, expected_job, expected_waiting);
+}}
+
+can_take_break_before_activity_instead_of_interrupting_it! {
+    case01_exact_time_waits_for_break: (7., (7., 9.), (9., 12.), 2),
+    case02_flexible_time_takes_break_on_arrival: (4., (5., 7.), (7., 10.), 0),
+}
+
+fn can_take_break_before_activity_instead_of_interrupting_it_impl(
+    earliest: f64,
+    expected_break: (f64, f64),
+    expected_job: (f64, f64),
+    expected_waiting: i64,
+) {
     let is_open = false;
     let problem = create_problem(
         vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
         VehicleBreak::Required {
             id: None,
-            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(earliest), latest: format_time(7.) },
             duration: 2.,
         },
         is_open,
     );
     let matrix = create_matrix_from_problem(&problem);
+    let job_end = expected_job.1;
 
     let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
 
@@ -110,26 +124,35 @@ fn can_assign_break_during_activity() {
                             .build_departure(),
                         StopBuilder::default()
                             .coordinate((5., 0.))
-                            .schedule_stamp(5., 10.)
+                            .schedule_stamp(5., job_end)
                             .load(vec![0])
                             .distance(5)
+                            .activity(
+                                ActivityBuilder::break_type().time_stamp(expected_break.0, expected_break.1).build()
+                            )
                             .activity(
                                 ActivityBuilder::delivery()
                                     .job_id("job1")
                                     .coordinate((5., 0.))
-                                    .time_stamp(5., 10.)
+                                    .time_stamp(expected_job.0, expected_job.1)
                                     .build()
                             )
-                            .activity(ActivityBuilder::break_type().time_stamp(7., 9.).build())
                             .build(),
                         StopBuilder::default()
                             .coordinate((0., 0.))
-                            .schedule_stamp(15., 15.)
+                            .schedule_stamp(job_end + 5., job_end + 5.)
                             .load(vec![0])
                             .distance(10)
                             .build_arrival(),
                     ])
-                    .statistic(StatisticBuilder::default().driving(10).serving(3).break_time(2).build())
+                    .statistic(
+                        StatisticBuilder::default()
+                            .driving(10)
+                            .serving(3)
+                            .waiting(expected_waiting)
+                            .break_time(2)
+                            .build()
+                    )
                     .build()
             )
             .build()

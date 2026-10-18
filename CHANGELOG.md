@@ -16,6 +16,8 @@ are already published. So, I stick to it for now.
 * change GSOM distance function
 * improve SISR implementation
 * improve dynamic selective heuristic
+* required breaks no longer interrupt job service: a break is taken either before or after a job activity, never in
+  the middle of it
 
 ### Added
 

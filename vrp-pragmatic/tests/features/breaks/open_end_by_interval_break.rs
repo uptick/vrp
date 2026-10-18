@@ -58,7 +58,7 @@ can_simulate_two_open_shifts_with_different_breaks! {
         vec![create_optional_break((25., 30.), 5.),
              create_required_break(50., 50., 50.),
         ],
-        vec![vec!["departure"], vec!["job1_1", "break"], vec!["job1_2", "break"], vec!["job2_1"], vec!["job2_2"]]
+        vec![vec!["departure"], vec!["job1_1", "break"], vec!["break", "job1_2"], vec!["job2_1"], vec!["job2_2"]]
     ),
 }
 

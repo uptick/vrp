@@ -6,7 +6,9 @@ use crate::format::CoordIndex;
 use crate::format::solution::activity_matcher::get_job_tag;
 use crate::format::solution::model::Timing;
 use crate::format::solution::*;
-use vrp_core::construction::enablers::{ReservedTimesIndex, get_route_intervals};
+use vrp_core::construction::enablers::{
+    ReservedTimesIndex, estimate_service_start_with_reserved_time, get_route_intervals,
+};
 use vrp_core::construction::features::JobDemandDimension;
 use vrp_core::construction::heuristics::UnassignmentInfo;
 use vrp_core::models::common::*;
@@ -190,6 +192,15 @@ fn create_tour(
                 let activity_arrival = parking + act.schedule.arrival + commute.forward.duration;
                 let service_start = activity_arrival.max(act.place.time.start);
                 let waiting = service_start - activity_arrival;
+
+                // NOTE required break is taken before the service, it never interrupts it
+                let (service_start, waiting) = match get_reserved_service_start(route, act, reserved_times_index) {
+                    Some((reserved_service_start, reserved_duration)) if reserved_service_start > service_start => {
+                        let delay = reserved_service_start - service_start;
+                        (reserved_service_start, waiting + (delay - reserved_duration).max(0.))
+                    }
+                    _ => (service_start, waiting),
+                };
                 let serving = act.place.duration - parking;
                 let service_end = service_start + serving;
                 let activity_departure = service_end;
@@ -241,10 +252,7 @@ fn create_tour(
                     job_id,
                     activity_type: activity_type.clone(),
                     location: Some(coord_index.get_by_idx(act.place.location).unwrap()),
-                    time: Some(Interval {
-                        start: format_time(activity_arrival.max(act.place.time.start)),
-                        end: format_time(activity_departure),
-                    }),
+                    time: Some(Interval { start: format_time(service_start), end: format_time(activity_departure) }),
                     job_tag,
                     break_id,
                     commute: act
@@ -320,6 +328,30 @@ fn create_tour(
     tour.type_id.clone_from(vehicle.dimens.get_vehicle_type().unwrap());
 
     tour
+}
+
+/// Returns activity's service start (as estimated by the solver) and duration of reserved time
+/// when reserved time applies to the activity.
+fn get_reserved_service_start(
+    route: &Route,
+    act: &Activity,
+    reserved_times_index: &ReservedTimesIndex,
+) -> Option<(Timestamp, Duration)> {
+    let offset = route.tour.start().map(|start| start.schedule.departure).unwrap_or(0.);
+    let arrival = act.schedule.arrival;
+    let schedule = TimeWindow::new(arrival, arrival.max(act.place.time.start) + act.place.duration);
+
+    reserved_times_index
+        .get(&route.actor)
+        .iter()
+        .flat_map(|times| times.iter())
+        .map(|reserved_time| reserved_time.to_reserved_time_window(offset))
+        .find(|rt| TimeWindow::new(rt.time.end, rt.time.end + rt.duration).intersects_exclusive(&schedule))
+        .map(|rt| {
+            let service_start =
+                estimate_service_start_with_reserved_time(&rt, arrival, &act.place.time, act.place.duration);
+            (service_start, rt.duration)
+        })
 }
 
 fn format_schedule(schedule: &DomainSchedule) -> ApiSchedule {
