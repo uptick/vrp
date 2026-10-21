@@ -115,6 +115,11 @@ pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Float>,
 
+    /// A soft deadline for arriving at the job: an RFC3339 date-time with its UTC offset. A due
+    /// date with no time of day is sent as the end of that day in the job's timezone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+
     /// Job group: jobs of the same group are assigned to the same tour or unassigned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
@@ -617,6 +622,15 @@ pub enum Objective {
 
     /// An objective to prefer jobs to be served as soon as possible.
     FastService,
+
+    /// An objective to minimize how many jobs are served after their `due` date.
+    MinimizeLateJobs,
+
+    /// An objective to minimize how long after their `due` date jobs are served, in total.
+    MinimizeTardiness,
+
+    /// An objective to serve jobs early between the plan start and their `due` date.
+    MinimizeDueWindowUse,
 
     /// An objective to prefer assigning jobs close (by travel time) to the vehicle's depot
     /// (shift start).

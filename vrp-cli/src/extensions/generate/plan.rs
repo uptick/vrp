@@ -67,6 +67,7 @@ pub(crate) fn generate_plan(
                 services: generate_tasks(&job_proto.services, true),
                 skills: job_proto.skills.clone(),
                 value: job_proto.value,
+                due: job_proto.due.clone(),
                 group: job_proto.group.clone(),
                 compatibility: job_proto.compatibility.clone(),
             }

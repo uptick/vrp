@@ -202,6 +202,11 @@ fn get_objective_feature_layer(
         }
         Objective::TourOrder => create_tour_order_soft_feature("tour_order", get_tour_order_fn()),
         Objective::FastService => get_fast_service_feature("fast_service", blocks),
+        Objective::MinimizeLateJobs => get_due_date_feature("min_late_jobs", DueDateMeasure::LateJobs, blocks),
+        Objective::MinimizeTardiness => get_due_date_feature("min_tardiness", DueDateMeasure::Tardiness, blocks),
+        Objective::MinimizeDueWindowUse => {
+            get_due_date_feature("min_due_window_use", DueDateMeasure::WindowUse, blocks)
+        }
         Objective::MinimizeDepotTravelTime { cap } => create_minimize_depot_travel_time_feature(
             "min_depot_travel",
             blocks.transport.clone(),
@@ -371,6 +376,12 @@ fn get_capacity_feature(
     } else {
         CapacityFeatureBuilder::<SingleDimLoad>::new(name).set_violation_code(CAPACITY_CONSTRAINT_CODE).build()
     }
+}
+
+fn get_due_date_feature(name: &str, measure: DueDateMeasure, blocks: &ProblemBlocks) -> GenericResult<Feature> {
+    let job_due_date_fn: JobDueDateFn = Arc::new(|job| job.dimens().get_job_due_date().copied());
+
+    create_due_date_feature(name, measure, job_due_date_fn, blocks.transport.clone(), &blocks.fleet)
 }
 
 fn get_fast_service_feature(name: &str, blocks: &ProblemBlocks) -> GenericResult<Feature> {
