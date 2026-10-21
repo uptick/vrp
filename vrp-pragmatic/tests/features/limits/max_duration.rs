@@ -273,6 +273,62 @@ fn allow_out_of_hours_depot_travel_rejects_job_longer_than_shift() {
     }
 }
 
+// Regression test for a first job served before the shift start when a required break opens it.
+//
+// With zero travel from the depot, the depot leg that reaches the first job exactly at the floor
+// is a zero-length window touching the break's start. The reserved-time lookup charged that
+// window the whole break, so the floor departed a break's length early, and the forward leg,
+// which misses the break, reached the first job before the shift started.
+#[test]
+fn allow_out_of_hours_depot_travel_keeps_first_job_after_break_at_shift_start() {
+    // The matrix is zeroed so the depot leg takes no time (a technician without a depot). Shift is
+    // [100, 300] and a required break covers [100, 150]. The job must start at or after the shift
+    // start, never at t=50.
+    let problem = Problem {
+        plan: Plan { jobs: vec![create_delivery_job_with_duration("job1", (10., 0.), 10.)], ..create_empty_plan() },
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                shifts: vec![VehicleShift {
+                    start: ShiftStart { earliest: format_time(100.), latest: None, location: (0., 0.).to_loc() },
+                    end: Some(ShiftEnd { earliest: None, latest: format_time(300.), location: (0., 0.).to_loc() }),
+                    breaks: Some(vec![VehicleBreak::Required {
+                        id: None,
+                        time: VehicleRequiredBreakTime::ExactTime {
+                            earliest: format_time(100.),
+                            latest: format_time(100.),
+                        },
+                        duration: 50.,
+                    }]),
+                    reloads: None,
+                    recharges: None,
+                }],
+                limits: Some(VehicleLimits {
+                    max_distance: None,
+                    max_duration: None,
+                    tour_size: None,
+                    allow_out_of_hours_depot_travel: Some(true),
+                }),
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+    let mut matrix = create_matrix_from_problem(&problem);
+    matrix.travel_times.iter_mut().for_each(|travel_time| *travel_time = 0);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert!(solution.unassigned.is_none() || solution.unassigned.unwrap().is_empty());
+    let job_arrival = solution.tours[0]
+        .stops
+        .iter()
+        .find(|stop| stop.activities().iter().any(|activity| activity.job_id == "job1"))
+        .map(|stop| crate::parse_time(stop.schedule().arrival.as_str()))
+        .expect("job1 should be served");
+    assert!(job_arrival >= 100., "expected job1 to start at/after shift start (t>=100), got t={job_arrival}");
+}
+
 #[test]
 fn can_serve_job_when_it_starts_late() {
     let problem = Problem {
