@@ -111,7 +111,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # ratchet:astral-sh/setup-uv@v7
         with:
-          version: "0.5.0"
+          version: "0.13.4"
 
       - name: Setup and Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # ratchet:aws-actions/configure-aws-credentials@v5
