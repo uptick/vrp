@@ -99,7 +99,7 @@ jobs:
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/'))
     permissions:
       id-token: write
-      contents: write
+      contents: read
     needs: [linux, macos]
     runs-on: ubuntu-latest
     steps:
@@ -112,18 +112,27 @@ jobs:
         uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # ratchet:astral-sh/setup-uv@v7
         with:
           version: "0.13.4"
+          enable-cache: false
 
+      # The role and bucket live in secrets so this public repo, and its public
+      # run logs, don't carry the AWS account ID.
       - name: Setup and Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # ratchet:aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: arn:aws:iam::610829907584:role/default-github-actions-ci-role
+          role-to-assume: ${{ secrets.PYPI_PUBLISH_ROLE_ARN }}
           role-session-name: vrp-pypi-publish
           aws-region: us-east-1
+          mask-aws-account-id: true
 
+      # s3pypi's own dependencies aren't pinned, so freeze resolution to a known
+      # date rather than install whatever was published minutes before a release.
+      # Bump the date deliberately when s3pypi or its dependencies need updating.
       - name: Build and Publish Package to S3Pypi
         shell: bash
+        env:
+          S3PYPI_BUCKET: ${{ secrets.S3PYPI_BUCKET }}
         run: |
-          uvx s3pypi@2.0.1 upload dist/* --bucket s3pypi-610829907584-us-east-1
+          uvx --exclude-newer 2026-10-23T00:00:00Z s3pypi@2.0.1 upload dist/* --bucket "$S3PYPI_BUCKET"
   gh-publish:
     name: Publish artifacts to GH
     # Same rule. action-gh-release falls back to github.ref, so a branch dispatch
