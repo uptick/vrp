@@ -12,6 +12,7 @@ use vrp_core::prelude::Float;
 
 /// Relation type.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum RelationType {
     /// Relation type which locks jobs to specific vehicle in any order.
@@ -24,6 +25,7 @@ pub enum RelationType {
 
 /// Relation is the way to lock specific jobs to specific vehicles.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Relation {
     /// Relation type.
@@ -40,6 +42,7 @@ pub struct Relation {
 
 /// A job skills limitation for a vehicle.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct JobSkills {
     /// Vehicle should have all of these skills defined.
@@ -55,6 +58,7 @@ pub struct JobSkills {
 
 /// Specifies a place for sub job.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct JobPlace {
     /// A job place location.
     pub location: Location,
@@ -71,6 +75,7 @@ pub struct JobPlace {
 
 /// Specifies a job task.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct JobTask {
     /// A list of possible places where given task can be performed.
     pub places: Vec<JobPlace>,
@@ -87,6 +92,7 @@ pub struct JobTask {
 /// * all of them should be completed or none of them.
 /// * all pickups must be completed before any of deliveries.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Job {
     /// A job id.
     pub id: String,
@@ -133,10 +139,12 @@ pub struct Job {
 
 /// Specifies clustering algorithm.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type")]
 pub enum Clustering {
     /// Vicinity clustering.
     #[serde(rename(deserialize = "vicinity", serialize = "vicinity"))]
+    #[cfg_attr(feature = "schema", schemars(title = "ClusteringVicinity"))]
     Vicinity {
         /// Specifies a vehicle profile used to calculate commute duration and distance between
         /// activities in the single stop.
@@ -154,6 +162,7 @@ pub enum Clustering {
 
 /// Defines a various thresholds to control cluster size.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VicinityThresholdPolicy {
     /// Moving duration limit.
@@ -170,6 +179,7 @@ pub struct VicinityThresholdPolicy {
 
 /// Specifies cluster visiting policy.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum VicinityVisitPolicy {
     /// It is required to return to the first job's location (cluster center) before visiting a next job.
@@ -181,6 +191,7 @@ pub enum VicinityVisitPolicy {
 
 /// Specifies service time policy.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type")]
 pub enum VicinityServingPolicy {
     /// Keep original service time.
@@ -209,6 +220,7 @@ pub enum VicinityServingPolicy {
 
 /// Specifies filtering policy for vicinity clustering.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VicinityFilteringPolicy {
     /// Ids of the jobs which cannot be used within clustering.
@@ -219,6 +231,7 @@ pub struct VicinityFilteringPolicy {
 
 /// A plan specifies work which has to be done.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Plan {
     /// List of jobs.
     pub jobs: Vec<Job>,
@@ -238,6 +251,7 @@ pub struct Plan {
 
 /// Specifies vehicle costs.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct VehicleCosts {
     /// Fixed is cost of vehicle usage per tour.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -252,6 +266,7 @@ pub struct VehicleCosts {
 
 /// Specifies vehicle shift start.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ShiftStart {
     /// Earliest possible departure date time in RFC3339 format.
     pub earliest: String,
@@ -268,6 +283,7 @@ pub struct ShiftStart {
 
 /// Specifies vehicle shift end.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ShiftEnd {
     /// Earliest possible arrival date time in RFC3339 format.
     /// At the moment, not supported, reserved for future.
@@ -283,6 +299,7 @@ pub struct ShiftEnd {
 
 /// Specifies vehicle shift.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct VehicleShift {
     /// Vehicle shift start.
     pub start: ShiftStart,
@@ -307,6 +324,7 @@ pub struct VehicleShift {
 
 /// Specifies a place where vehicle can load or unload cargo.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VehicleReload {
     /// A place location.
@@ -330,6 +348,7 @@ pub struct VehicleReload {
 
 /// Specifies vehicle recharge stations data.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VehicleRecharges {
     /// Maximum traveled distance before recharge station has to be visited.
@@ -344,6 +363,7 @@ pub type VehicleRechargeStation = JobPlace;
 
 /// Vehicle limits.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VehicleLimits {
     /// Max traveling distance per shift/tour.
@@ -370,6 +390,7 @@ pub struct VehicleLimits {
 
 /// Vehicle optional break time variant.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum VehicleOptionalBreakTime {
     /// Break time is defined by a time window with time specified in RFC3339 format.
@@ -380,10 +401,12 @@ pub enum VehicleOptionalBreakTime {
 
 /// Vehicle required break time variant.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum VehicleRequiredBreakTime {
     /// Break time is defined by exact time in RFC3339 format.
     /// Break should be taken not earlier and not later than time range specified.
+    #[cfg_attr(feature = "schema", schemars(title = "VehicleRequiredBreakTimeExact"))]
     ExactTime {
         /// Start of the range.
         earliest: String,
@@ -392,6 +415,7 @@ pub enum VehicleRequiredBreakTime {
     },
     /// Break time is defined by amount of seconds since driving time.
     /// Break should be taken not earlier and not later than time range specified.
+    #[cfg_attr(feature = "schema", schemars(title = "VehicleRequiredBreakTimeOffset"))]
     OffsetTime {
         /// Start of the range.
         earliest: Float,
@@ -402,6 +426,7 @@ pub enum VehicleRequiredBreakTime {
 
 /// Vehicle break place.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct VehicleOptionalBreakPlace {
     /// Break duration.
     pub duration: Float,
@@ -415,6 +440,7 @@ pub struct VehicleOptionalBreakPlace {
 
 /// Vehicle break policy.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum VehicleOptionalBreakPolicy {
     /// Allows to skip break if actual tour schedule doesn't intersect with vehicle time window.
@@ -425,9 +451,11 @@ pub enum VehicleOptionalBreakPolicy {
 
 /// Specifies a vehicle break.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum VehicleBreak {
     /// An optional break which is more flexible, but might be not assigned.
+    #[cfg_attr(feature = "schema", schemars(title = "VehicleBreakOptional"))]
     Optional {
         /// An optional break id which is propagated back to the corresponding solution activity.
         /// Has to be unique within a shift.
@@ -442,6 +470,7 @@ pub enum VehicleBreak {
     },
     /// A break which has to be assigned. It is less flexible than optional break, but has strong
     /// assignment guarantee.
+    #[cfg_attr(feature = "schema", schemars(title = "VehicleBreakRequired"))]
     Required {
         /// An optional break id which is propagated back to the corresponding solution activity.
         /// Has to be unique within a shift.
@@ -465,6 +494,7 @@ impl VehicleBreak {
 
 /// Specifies a vehicle type.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct VehicleType {
     /// Vehicle type id.
@@ -496,6 +526,7 @@ pub struct VehicleType {
 
 /// Specifies a vehicle profile.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct VehicleProfile {
     /// Routing matrix profile name.
     pub matrix: String,
@@ -508,6 +539,7 @@ pub struct VehicleProfile {
 
 /// Specifies routing matrix profile.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MatrixProfile {
     /// Profile name.
     pub name: String,
@@ -520,10 +552,12 @@ pub struct MatrixProfile {
 
 /// Specifies vehicle resource type.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type")]
 pub enum VehicleResource {
     /// A shared reload resource.
     #[serde(rename(deserialize = "reload", serialize = "reload"))]
+    #[cfg_attr(feature = "schema", schemars(title = "VehicleResourceReload"))]
     Reload {
         /// Resource id.
         id: String,
@@ -534,6 +568,7 @@ pub enum VehicleResource {
 
 /// Specifies fleet.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Fleet {
     /// Vehicle types.
     pub vehicles: Vec<VehicleType>,
@@ -552,6 +587,7 @@ pub struct Fleet {
 
 /// Specifies objective function types.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Objective {
     /// An objective to minimize total cost as a linear combination of total time and distance.
@@ -612,8 +648,12 @@ pub enum Objective {
     BalanceDuration,
 
     /// An objective to control how tours are built.
+    // NOTE: `rename_all` on the enum applies to variant names, not to fields of a struct variant,
+    // so it has to be repeated here to keep the field camelCase like the rest of the format
+    #[serde(rename_all = "camelCase")]
     CompactTour {
         /// Specifies radius of neighbourhood. Min is 1.
+        #[serde(alias = "job_radius")]
         job_radius: usize,
     },
 
@@ -662,6 +702,7 @@ pub enum Objective {
 /// An mupltiple objective strategy type specifies how competitive objective functions are compared
 /// among each other.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "name", rename_all = "kebab-case")]
 pub enum MultiStrategy {
     /// A sum type simply sums all objective values together.
@@ -680,6 +721,7 @@ pub enum MultiStrategy {
 
 /// A VRP problem definition.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Problem {
     /// Problem plan: customers to serve.
     pub plan: Plan,
@@ -694,6 +736,7 @@ pub struct Problem {
 
 /// A routing matrix.
 #[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Matrix {
     /// A name of profile.
@@ -702,11 +745,11 @@ pub struct Matrix {
     /// A date in RFC3999 for which routing info is applicable.
     pub timestamp: Option<String>,
 
-    /// Travel distances (used to be in seconds).
+    /// Travel durations (in seconds).
     #[serde(alias = "durations")]
     pub travel_times: Vec<i64>,
 
-    /// Travel durations (use to be in meters).
+    /// Travel distances (in meters).
     pub distances: Vec<i64>,
 
     /// Error codes to mark unreachable locations.
