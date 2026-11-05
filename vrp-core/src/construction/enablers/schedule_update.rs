@@ -5,13 +5,36 @@ use crate::models::problem::{ActivityCost, TransportCost, TravelTime};
 use rosomaxa::prelude::Float;
 use rosomaxa::utils::UnwrapValue;
 
-custom_activity_state!(pub(crate) LatestArrival typeof Timestamp);
-custom_activity_state!(pub(crate) WaitingTime typeof Timestamp);
 custom_tour_state!(pub TotalDistance typeof Distance);
 custom_tour_state!(pub TotalDuration typeof Duration);
 custom_tour_state!(pub(crate) LimitDuration typeof Duration);
 
 custom_dimension!(pub FirstJobArrivalFloor typeof Timestamp);
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ActivityScheduleState {
+    pub latest_arrival: Timestamp,
+    pub waiting_time: Timestamp,
+}
+
+custom_activity_state!(pub(crate) Schedule typeof ActivityScheduleState, setter(cfg(test)));
+
+trait ScheduleStateAccess {
+    fn prepare_schedule_states(&mut self, activity_count: usize) -> &mut Vec<ActivityScheduleState>;
+}
+
+impl ScheduleStateAccess for RouteState {
+    fn prepare_schedule_states(&mut self, activity_count: usize) -> &mut Vec<ActivityScheduleState> {
+        let states =
+            self.get_or_init_exclusive_tour_state::<ScheduleActivityStateKey, Vec<ActivityScheduleState>>(|| {
+                Vec::with_capacity(activity_count)
+            });
+
+        states.clear();
+        states.reserve(activity_count);
+        states
+    }
+}
 
 /// Updates route schedule data.
 pub fn update_route_schedule(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, transport: &dyn TransportCost) {
@@ -103,14 +126,13 @@ fn update_states(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, tran
         Float::default(),
     );
 
-    let route = route_ctx.route();
-    let mut latest_arrivals = Vec::with_capacity(route.tour.total());
-    let mut waiting_times = Vec::with_capacity(route.tour.total());
+    let tour_len = route_ctx.route().tour.total();
+    let (route, state) = route_ctx.as_mut();
+    let schedule_states = state.prepare_schedule_states(tour_len);
 
     route.tour.all_activities().rev().fold(init, |acc, act| {
         if act.job.is_none() {
-            latest_arrivals.push(Default::default());
-            waiting_times.push(Default::default());
+            schedule_states.push(ActivityScheduleState::default());
             return acc;
         }
 
@@ -124,23 +146,18 @@ fn update_states(route_ctx: &mut RouteContext, activity: &dyn ActivityCost, tran
         };
         let future_waiting = waiting + (act.place.time.start - act.schedule.arrival).max(0.);
 
-        latest_arrivals.push(latest_arrival_time);
-        waiting_times.push(future_waiting);
+        schedule_states
+            .push(ActivityScheduleState { latest_arrival: latest_arrival_time, waiting_time: future_waiting });
 
         (latest_arrival_time, act.place.location, future_waiting)
     });
 
-    latest_arrivals.reverse();
-    waiting_times.reverse();
+    schedule_states.reverse();
 
     // NOTE: pop out state for arrival
     if route.tour.end().is_some_and(|end| end.job.is_none()) {
-        latest_arrivals.pop();
-        waiting_times.pop();
+        schedule_states.pop();
     }
-
-    route_ctx.state_mut().set_latest_arrival_states(latest_arrivals);
-    route_ctx.state_mut().set_waiting_time_states(waiting_times);
 }
 
 fn update_statistics(route_ctx: &mut RouteContext, transport: &dyn TransportCost) {
@@ -157,6 +174,6 @@ fn update_statistics(route_ctx: &mut RouteContext, transport: &dyn TransportCost
         (a.place.location, a.schedule.departure, total_dist)
     });
 
-    state.set_total_distance(total_dist);
-    state.set_total_duration(total_dur);
+    state.update_tour_state::<TotalDistanceTourStateKey, _>(total_dist);
+    state.update_tour_state::<TotalDurationTourStateKey, _>(total_dur);
 }

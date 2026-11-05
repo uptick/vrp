@@ -4,7 +4,7 @@
 [![downloads](https://img.shields.io/crates/d/vrp-core)](https://crates.io/crates/vrp-core)
 [![codecov](https://codecov.io/gh/reinterpretcat/vrp/branch/master/graph/badge.svg)](https://codecov.io/gh/reinterpretcat/vrp)
 [![CodeScene Code Health](https://codescene.io/projects/46594/status-badges/code-health)](https://codescene.io/projects/46594)
-[![dependency status](https://deps.rs/crate/vrp-cli/1.25.0/status.svg)](https://deps.rs/crate/vrp-cli/1.25.0)
+[![dependency status](https://deps.rs/crate/vrp-cli/1.26.0/status.svg)](https://deps.rs/crate/vrp-cli/1.26.0)
 [![DOI](https://zenodo.org/badge/238436117.svg)](https://zenodo.org/badge/latestdoi/238436117)
 
 ![VRP example](docs/resources/vrp-example.png "VRP with Route Balance")
@@ -46,7 +46,7 @@ Additionally, you can check `vrp-core/examples` to see how to use the library an
 
 # Installation
 
-You can install the latest release of the vrp solver using four different ways:
+You can install the latest release of the vrp solver in several different ways:
 
 ## Install with Python
 
@@ -58,12 +58,69 @@ pip install vrp-cli
 python examples/python-interop/example.py # run test example
 ```
 
-Alternatively, you can use [maturin](https://github.com/PyO3/maturin) tool to build solver locally. You need to enable
-`py_bindings` feature which is not enabled by default.
+The package ships typed `pydantic` models for every document the solver exchanges as `vrp_cli.models`, generated from the
+solver's own rust types, so there is no need to write them by hand:
+
+```python
+import vrp_cli
+from vrp_cli.models.config import Config, TerminationConfig
+from vrp_cli.models.problem import Fleet, Plan, Problem
+from vrp_cli.models.solution import Solution
+
+problem = Problem(plan=Plan(jobs=[...]), fleet=Fleet(vehicles=[...], profiles=[...]))
+config = Config(termination=TerminationConfig(maxTime=5))
+
+solution = Solution.model_validate_json(
+    vrp_cli.solve_pragmatic(
+        problem=problem.model_dump_json(exclude_none=True),
+        matrices=[],
+        config=config.model_dump_json(exclude_none=True),
+    )
+)
+print(solution.statistic.cost)
+```
+
+Alternatively, you can use [maturin](https://github.com/PyO3/maturin) tool to build solver locally.
 
 Additionally, to jupyter notebook mentioned above, you can find extra information in [python example section](https://reinterpretcat.github.io/vrp/examples/interop/python.html)
-of the docs. The [full source code](./examples/python-interop/example.py) of python example is available in the repo which
-contains useful model wrappers with help of `pydantic` lib (reused by tutorial as well).
+of the docs. The [full source code](./examples/python-interop/example.py) of python example is available in the repo.
+
+## Use from Javascript
+
+The solver runs as `WebAssembly` in a browser or in node. There is no npm package: either grab
+`vrp_cli_wasm.zip` from the [latest release](https://github.com/reinterpretcat/vrp/releases), which is a `--target web`
+build ready for browsers, or build the target you need locally:
+
+```shell
+pip install -r vrp-cli/bindings/python/requirements-codegen.txt
+npm ci --prefix vrp-cli/bindings/typescript
+./vrp-cli/bindings/generate.sh
+cd vrp-cli
+wasm-pack build --target web                        # browsers
+wasm-pack build --target nodejs --out-dir pkg-node  # node
+```
+
+Calls take plain javascript objects and hand them back, and a typed `vrp_cli.d.ts` is generated next to the package, so
+typescript callers get completion and type checking without writing any definitions:
+
+```javascript
+import { createRequire } from 'node:module';
+
+// wasm-pack's output, resolved relative to this file
+const vrp = createRequire(import.meta.url)('./pkg-node/vrp_cli.js');
+
+const problem = { plan: { jobs: [/* ... */] }, fleet: { vehicles: [/* ... */], profiles: [/* ... */] } };
+
+// passing no matrices lets the solver approximate distances
+const solution = vrp.solve_pragmatic(problem, [], { termination: { maxTime: 5 } });
+console.log(solution.statistic.cost);
+```
+
+Failures throw an `Error` whose message is a json array of `{ code, cause, action }` entries. Node 19 or newer is
+required, since the solver seeds its random number generator from the Web Crypto API.
+
+For a complete runnable version see [examples/js-interop](./examples/js-interop) and the
+[javascript example section](https://reinterpretcat.github.io/vrp/examples/interop/javascript.html) of the docs.
 
 
 ## Install from Docker
@@ -73,7 +130,7 @@ Another fast way to try vrp solver on your environment is to use `docker` image 
 * **run public image** from `Github Container Registry`:
 
 ```bash
-    docker run -it -v $(pwd):/repo --name vrp-cli --rm ghcr.io/reinterpretcat/vrp/vrp-cli:1.25.0
+    docker run -it -v $(pwd):/repo --name vrp-cli --rm ghcr.io/reinterpretcat/vrp/vrp-cli:1.26.0
 ```
 
 * **build image locally** using `Dockerfile` provided:

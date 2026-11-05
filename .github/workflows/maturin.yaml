@@ -19,8 +19,46 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
+# vrp-cli enables pyo3's abi3-py310 feature, so each platform produces a single stable-ABI wheel
+# (cp310-abi3) that works on CPython 3.10 and every later version. No per-interpreter builds needed.
 jobs:
+  bindings:
+    name: Generate bindings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # ratchet:actions/checkout@v3
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # ratchet:actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install code generators
+        run: |
+          npm ci --prefix vrp-cli/bindings/typescript --no-audit --no-fund
+          python -m pip install --quiet -r vrp-cli/bindings/python/requirements-codegen.txt
+
+      # The wheel imports vrp_cli.models, which is generated rather than committed.
+      - name: Generate bindings from the rust types
+        run: ./vrp-cli/bindings/generate.sh
+
+      - name: Upload generated bindings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # ratchet:actions/upload-artifact@v4
+        with:
+          name: generated-bindings
+          if-no-files-found: error
+          path: |
+            vrp-cli/bindings/schemas/*.schema.json
+            vrp-cli/bindings/python/vrp_cli/models/*.py
+            !vrp-cli/bindings/python/vrp_cli/models/__init__.py
+            !vrp-cli/bindings/python/vrp_cli/models/_base.py
+            vrp-cli/bindings/typescript/format_types.d.ts
+
   linux:
+    needs: bindings
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,17 +66,15 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # ratchet:actions/checkout@v3
 
+      - name: Download generated bindings
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
+        with:
+          name: generated-bindings
+          path: vrp-cli/bindings
+
       - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
         with:
           python-version: "3.12"
-
-      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
-        with:
-          python-version: "3.13"
-
-      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
-        with:
-          python-version: "3.14"
 
       - name: Build wheels
         uses: PyO3/maturin-action@86b9d133d34bc1b40018696f782949dac11bd380 # ratchet:PyO3/maturin-action@v1
@@ -46,7 +82,7 @@ jobs:
           working-directory: ./vrp-cli
           target: ${{ matrix.target }}
           sccache: "true"
-          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13 -i 3.14
+          args: --release --out dist -m Cargo.toml
           manylinux: auto
 
       - name: Upload wheels
@@ -56,6 +92,7 @@ jobs:
           path: ./vrp-cli/dist
 
   macos:
+    needs: bindings
     runs-on: macos-latest
     strategy:
       matrix:
@@ -63,19 +100,15 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # ratchet:actions/checkout@v3
 
+      - name: Download generated bindings
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
+        with:
+          name: generated-bindings
+          path: vrp-cli/bindings
+
       - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
         with:
           python-version: "3.12"
-          architecture: "arm64"
-
-      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
-        with:
-          python-version: "3.13"
-          architecture: "arm64"
-
-      - uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # ratchet:actions/setup-python@v4
-        with:
-          python-version: "3.14"
           architecture: "arm64"
 
       - name: Build wheels
@@ -83,7 +116,7 @@ jobs:
         with:
           working-directory: ./vrp-cli
           target: ${{ matrix.target }}
-          args: --release --out dist -m Cargo.toml -i 3.12 -i 3.13 -i 3.14
+          args: --release --out dist -m Cargo.toml
           sccache: "true"
 
       - name: Upload wheels
@@ -105,6 +138,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
 
@@ -136,6 +170,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
         with:
+          pattern: wheels-*
           path: .
           merge-multiple: true
 
@@ -169,8 +204,11 @@ jobs:
           for asset in assets:
             name = asset['name']
             url = asset['browser_download_url']
-            python_version = name.split('-')[2].split('cp3')[1]
-            index_content += f'<a href="{url}" data-requires-python="==3.{python_version}">{name}</a><br />\n'
+            python_tag, abi_tag = name.split('-')[2:4]
+            python_version = python_tag.split('cp3')[1]
+            # an abi3 wheel built for 3.10 also runs on every later CPython
+            requires_python = f'&gt;=3.{python_version}' if abi_tag == 'abi3' else f'==3.{python_version}'
+            index_content += f'<a href="{url}" data-requires-python="{requires_python}">{name}</a><br />\n'
 
           # Write the content to the index.md file
           with open('docs/vrp-cli/index.md', 'w') as f:

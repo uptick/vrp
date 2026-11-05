@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../../../tests/unit/solver/search/recreate/recreate_with_blinks_test.rs"]
+mod recreate_with_blinks_test;
+
 use crate::construction::heuristics::*;
 use crate::construction::heuristics::{InsertionContext, JobSelector};
 use crate::models::Problem;
@@ -7,10 +11,14 @@ use crate::solver::RefinementContext;
 use crate::solver::search::recreate::Recreate;
 use rosomaxa::prelude::*;
 use rosomaxa::utils::fold_reduce;
+use std::cmp::Reverse;
 use std::sync::Arc;
 
 /// A recreate method as described in "Slack Induction by String Removals for
 /// Vehicle Routing Problems" (aka SISR) paper by Jan Christiaens, Greet Vanden Berghe.
+///
+/// Follows the canonical SISR insertion order: jobs are sorted once by the chosen criterion
+/// and inserted in that order without reevaluating remaining jobs after each insertion.
 pub struct RecreateWithBlinks {
     job_selectors: Vec<Box<dyn JobSelector>>,
     route_selector: Box<dyn RouteSelector>,
@@ -18,6 +26,25 @@ pub struct RecreateWithBlinks {
     result_selector: Box<dyn ResultSelector>,
     insertion_heuristic: InsertionHeuristic,
     weights: Vec<usize>,
+}
+
+/// Specifies the one-pass job order used by blink insertion.
+#[derive(Clone, Copy)]
+pub enum BlinkJobOrder {
+    /// Uses a random order.
+    Random,
+    /// Puts jobs with larger demand first.
+    Demand,
+    /// Puts jobs farther from the depot first.
+    Far,
+    /// Puts jobs closer to the depot first.
+    Close,
+    /// Puts jobs with shorter time windows first.
+    TimeWindowLength,
+    /// Puts jobs with earlier time-window starts first.
+    TimeWindowStart,
+    /// Puts jobs with later time-window ends first.
+    TimeWindowEnd,
 }
 
 impl RecreateWithBlinks {
@@ -40,33 +67,49 @@ impl RecreateWithBlinks {
     pub fn new_with_defaults(random: Arc<dyn Random>) -> Self {
         let blink_ratio = 0.01;
 
-        // Helper to wrap selectors with SingletonJobSelector
-        fn singleton<T: JobSelector + 'static>(selector: T) -> Box<dyn JobSelector> {
-            Box::new(SingletonJobSelector(selector))
-        }
-
         Self::new(
             vec![
                 // --- Core Selectors (Section 5.3) ---
                 // 1. Random (Weight: 4)
-                (singleton(AllJobSelector::default()), 4),
+                (Box::<AllJobSelector>::default(), 4),
                 // 2. Demand: Largest First (Weight: 4)
-                (singleton(DemandJobSelector::new(true)), 4),
+                (Box::new(DemandJobSelector), 4),
                 // 3. Far: Largest Distance First (Weight: 2)
-                (singleton(RankedJobSelector::new(true)), 2),
+                (Box::new(RankedJobSelector::new(true)), 2),
                 // 4. Close: Smallest Distance First (Weight: 1)
-                (singleton(RankedJobSelector::new(false)), 1),
+                (Box::new(RankedJobSelector::new(false)), 1),
                 // --- VRPTW Extensions (Table 13) ---
                 // 5. TW Length: Increasing (Shortest/Hardest first) (Weight: 2)
-                (singleton(TimeWindowJobSelector::new(TimeWindowSelectionMode::LengthAscending)), 2),
+                (Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::LengthAscending)), 2),
                 // 6. TW Start: Increasing (Earliest first) (Weight: 2)
-                (singleton(TimeWindowJobSelector::new(TimeWindowSelectionMode::StartAscending)), 2),
+                (Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::StartAscending)), 2),
                 // 7. TW End: Decreasing (Latest first) (Weight: 2)
-                (singleton(TimeWindowJobSelector::new(TimeWindowSelectionMode::EndDescending)), 2),
+                (Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::EndDescending)), 2),
             ],
             blink_ratio,
             random,
         )
+    }
+
+    /// Creates a new instance which always uses the specified job order.
+    pub fn new_with_job_order(job_order: BlinkJobOrder, random: Arc<dyn Random>) -> Self {
+        let selector: Box<dyn JobSelector> = match job_order {
+            BlinkJobOrder::Random => Box::<AllJobSelector>::default(),
+            BlinkJobOrder::Demand => Box::new(DemandJobSelector),
+            BlinkJobOrder::Far => Box::new(RankedJobSelector::new(true)),
+            BlinkJobOrder::Close => Box::new(RankedJobSelector::new(false)),
+            BlinkJobOrder::TimeWindowLength => {
+                Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::LengthAscending))
+            }
+            BlinkJobOrder::TimeWindowStart => {
+                Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::StartAscending))
+            }
+            BlinkJobOrder::TimeWindowEnd => {
+                Box::new(TimeWindowJobSelector::new(TimeWindowSelectionMode::EndDescending))
+            }
+        };
+
+        Self::new(vec![(selector, 1)], 0.01, random)
     }
 }
 
@@ -105,7 +148,7 @@ impl InsertionEvaluator for BlinkInsertionEvaluator {
         _leg_selection: &LegSelection,
         result_selector: &dyn ResultSelector,
     ) -> InsertionResult {
-        // With SingletonJobSelector, this is guaranteed to be the single target job.
+        // Canonical SISR drives one job at a time via the `process` override below.
         let job = match jobs.first() {
             Some(job) => job,
             None => return InsertionResult::make_failure(),
@@ -131,7 +174,6 @@ impl InsertionEvaluator for BlinkInsertionEvaluator {
                         continue;
                     }
 
-                    // Evaluate specific position
                     let result = eval_job_insertion_in_route(
                         insertion_ctx,
                         &eval_ctx,
@@ -145,16 +187,15 @@ impl InsertionEvaluator for BlinkInsertionEvaluator {
 
                 best_in_route
             },
-            // Reduce: Merge results from threads (Greedy/Best selection)
             InsertionResult::choose_best_result,
         );
 
         match result {
             InsertionResult::Success(_) => result,
             InsertionResult::Failure(mut failure) => {
-                // If we failed to insert, we must blame the specific job we were trying
-                // to insert. Otherwise, the heuristic thinks the issue is systemic (no routes)
-                // and might abort entirely.
+                // If we failed to insert, blame the specific job we were trying to insert —
+                // otherwise the failure handler treats it as systemic (no routes) and may
+                // drain all remaining jobs.
                 if failure.job.is_none() {
                     failure.job = Some((*job).clone());
                 }
@@ -162,18 +203,52 @@ impl InsertionEvaluator for BlinkInsertionEvaluator {
             }
         }
     }
-}
 
-struct SingletonJobSelector<T>(T);
+    /// Canonical SISR insertion order: sort `required` once via the chosen `JobSelector`,
+    /// then insert jobs strictly in that order without re-sorting or reselecting.
+    fn process(
+        &self,
+        mut insertion_ctx: InsertionContext,
+        job_selector: &dyn JobSelector,
+        route_selector: &dyn RouteSelector,
+        leg_selection: &LegSelection,
+        result_selector: &dyn ResultSelector,
+    ) -> InsertionContext {
+        prepare_insertion_ctx(&mut insertion_ctx);
 
-impl<T: JobSelector> JobSelector for SingletonJobSelector<T> {
-    fn prepare(&self, ctx: &mut InsertionContext) {
-        self.0.prepare(ctx);
-    }
+        // Sort once.
+        job_selector.prepare(&mut insertion_ctx);
+        route_selector.prepare(&mut insertion_ctx);
 
-    fn select<'a>(&'a self, ctx: &'a InsertionContext) -> Box<dyn Iterator<Item = &'a Job> + 'a> {
-        // Only yield the first job: this forces InsertionHeuristic to align with BlinkInsertionEvaluator.
-        Box::new(self.0.select(ctx).take(1))
+        while !insertion_ctx.solution.required.is_empty()
+            && !insertion_ctx.environment.quota.as_ref().is_some_and(|q| q.is_reached())
+        {
+            // Drain in sorted order: take the next job rather than reselecting from the full set.
+            let job = insertion_ctx.solution.required[0].clone();
+            let result = {
+                let jobs = [&job];
+                let routes = route_selector.select(&insertion_ctx, &jobs).collect::<Vec<_>>();
+                self.evaluate_all(&insertion_ctx, &jobs, &routes, leg_selection, result_selector)
+            };
+
+            match result {
+                InsertionResult::Success(success) => apply_insertion_success(&mut insertion_ctx, success),
+                InsertionResult::Failure(failure) => {
+                    // Single-job failure semantics: record this job as unassigned and move on.
+                    // `evaluate_all` above guarantees `failure.job` is set to our target.
+                    let failed_job = failure.job.unwrap_or_else(|| job.clone());
+                    insertion_ctx
+                        .solution
+                        .unassigned
+                        .insert(failed_job.clone(), UnassignmentInfo::Simple(failure.constraint));
+                    insertion_ctx.solution.required.retain(|j| *j != failed_job);
+                }
+            }
+        }
+
+        finalize_insertion_ctx(&mut insertion_ctx);
+
+        insertion_ctx
     }
 }
 
@@ -212,46 +287,33 @@ impl JobSelector for RankedJobSelector {
     }
 }
 
-struct DemandJobSelector {
-    asc_order: bool,
-}
-
-impl DemandJobSelector {
-    pub fn new(asc_order: bool) -> Self {
-        Self { asc_order }
-    }
-}
+struct DemandJobSelector;
 
 impl JobSelector for DemandJobSelector {
     fn prepare(&self, insertion_ctx: &mut InsertionContext) {
-        insertion_ctx.solution.required.sort_by(|a, b| {
-            use crate::construction::features::JobDemandDimension;
-            use crate::models::common::{MultiDimLoad, SingleDimLoad};
+        sort_jobs_by_demand(&mut insertion_ctx.solution.required);
+    }
+}
 
-            // Get total demand size (sum of all pickup and delivery components)
-            // Try SingleDimLoad first, then MultiDimLoad (only one type per problem)
-            let get_demand = |job: &Job| -> i32 {
-                let dimens = job.dimens();
+fn sort_jobs_by_demand(jobs: &mut [Job]) {
+    jobs.sort_by_key(|job| Reverse(get_job_demand(job)));
+}
 
-                if let Some(demand) = dimens.get_job_demand::<SingleDimLoad>() {
-                    demand.pickup.0.value + demand.pickup.1.value + demand.delivery.0.value + demand.delivery.1.value
-                } else if let Some(demand) = dimens.get_job_demand::<MultiDimLoad>() {
-                    let sum_load = |load: &MultiDimLoad| load.load[..load.size].iter().sum::<i32>();
-                    sum_load(&demand.pickup.0)
-                        + sum_load(&demand.pickup.1)
-                        + sum_load(&demand.delivery.0)
-                        + sum_load(&demand.delivery.1)
-                } else {
-                    0
-                }
-            };
+fn get_job_demand(job: &Job) -> i32 {
+    use crate::construction::features::JobDemandDimension;
+    use crate::models::common::{MultiDimLoad, SingleDimLoad};
 
-            get_demand(a).cmp(&get_demand(b))
-        });
-
-        if !self.asc_order {
-            insertion_ctx.solution.required.reverse();
-        }
+    let dimens = job.dimens();
+    if let Some(demand) = dimens.get_job_demand::<SingleDimLoad>() {
+        demand.pickup.0.value + demand.pickup.1.value + demand.delivery.0.value + demand.delivery.1.value
+    } else if let Some(demand) = dimens.get_job_demand::<MultiDimLoad>() {
+        let sum_load = |load: &MultiDimLoad| load.load[..load.size].iter().sum::<i32>();
+        sum_load(&demand.pickup.0)
+            + sum_load(&demand.pickup.1)
+            + sum_load(&demand.delivery.0)
+            + sum_load(&demand.delivery.1)
+    } else {
+        0
     }
 }
 

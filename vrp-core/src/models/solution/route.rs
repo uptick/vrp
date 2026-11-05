@@ -46,7 +46,7 @@ pub struct Place {
 }
 
 /// Represents activity which is needed to be performed.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Activity {
     /// Specifies activity details.
     pub place: Place,
@@ -97,22 +97,23 @@ impl Activity {
 
     /// Creates a deep copy of `Activity`.
     pub fn deep_copy(&self) -> Self {
-        Self {
-            place: Place {
-                idx: self.place.idx,
-                location: self.place.location,
-                duration: self.place.duration,
-                time: self.place.time.clone(),
-            },
-            schedule: self.schedule.clone(),
-            job: self.job.clone(),
-            commute: self.commute.clone(),
-        }
+        self.clone()
     }
 
     /// Checks whether activity has given job.
     pub fn has_same_job(&self, job: &Job) -> bool {
-        self.retrieve_job().as_ref() == Some(job)
+        match (job, self.job.as_ref()) {
+            (Job::Single(left), Some(right)) => Arc::ptr_eq(left, right),
+            (Job::Multi(multi), Some(single)) => {
+                Multi::roots(single).is_some_and(|single_parent| Arc::ptr_eq(multi, &single_parent))
+            }
+            _ => false,
+        }
+    }
+
+    /// Checks whether activity job has a parent multi job.
+    pub fn has_parent_job(&self) -> bool {
+        self.job.as_ref().is_some_and(|single| Multi::is_child(single))
     }
 
     /// Returns job if activity has it.
