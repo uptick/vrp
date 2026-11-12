@@ -137,6 +137,61 @@ fn can_assign_break_during_activity() {
 }
 
 #[test]
+fn can_start_activity_after_break_which_starts_on_arrival() {
+    let is_open = false;
+    let problem = create_problem(
+        vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
+        VehicleBreak::Required {
+            id: None,
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(5.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert_eq!(
+        solution,
+        SolutionBuilder::default()
+            .tour(
+                TourBuilder::default()
+                    .stops(vec![
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(0., 0.)
+                            .load(vec![1])
+                            .build_departure(),
+                        StopBuilder::default()
+                            .coordinate((5., 0.))
+                            .schedule_stamp(5., 10.)
+                            .load(vec![0])
+                            .distance(5)
+                            .activity(ActivityBuilder::break_type().time_stamp(5., 7.).build())
+                            .activity(
+                                ActivityBuilder::delivery()
+                                    .job_id("job1")
+                                    .coordinate((5., 0.))
+                                    .time_stamp(7., 10.)
+                                    .build()
+                            )
+                            .build(),
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(15., 15.)
+                            .load(vec![0])
+                            .distance(10)
+                            .build_arrival(),
+                    ])
+                    .statistic(StatisticBuilder::default().driving(10).serving(3).break_time(2).build())
+                    .build()
+            )
+            .build()
+    );
+}
+
+#[test]
 fn can_handle_required_break_when_its_start_falls_at_activity_end() {
     let is_open = true;
     let problem = create_problem(

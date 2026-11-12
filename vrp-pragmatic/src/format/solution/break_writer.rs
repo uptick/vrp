@@ -149,6 +149,11 @@ fn insert_break(
             if let Some(overlap) = overlap {
                 let extra_time = reserved_tw.end - overlap.end + overlap.duration();
                 time.end = format_time(end + extra_time);
+
+                // NOTE: work cannot start during the break, so it starts once the break is over
+                if start >= reserved_tw.start {
+                    time.start = format_time(reserved_tw.end);
+                }
             }
         }
     });

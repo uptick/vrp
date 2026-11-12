@@ -53,6 +53,8 @@ are already published. So, I stick to it for now.
   accepted now
 * swapped descriptions of `travelTimes` and `distances` in the routing matrix
 * objectives documentation listed several parameters which do not exist
+* an activity reached while a required break is being taken was reported as starting when the break
+  starts; it is now reported as starting when the break ends
 
 
 ## [1.25.0] 2024-11-10
