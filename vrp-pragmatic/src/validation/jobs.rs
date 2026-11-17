@@ -200,8 +200,11 @@ fn check_e1108_invalid_due_date(ctx: &ValidationContext) -> Result<(), FormatErr
     }
 }
 
-/// Checks that a crew is set only on a job with a single service task, and not on a job in relations.
+/// Checks that a crew is set only on a job with a single service task, not on a job in relations, and is
+/// not larger than the fleet: each crew member needs its own vehicle, and every member becomes a job copy.
 fn check_e1109_invalid_crew(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let total_vehicles = ctx.vehicles().map(|vehicle| vehicle.vehicle_ids.len()).sum::<usize>();
+
     let in_relations = ctx
         .problem
         .plan
@@ -219,7 +222,7 @@ fn check_e1109_invalid_crew(ctx: &ValidationContext) -> Result<(), FormatError> 
                 && job.replacements.is_none()
                 && job.services.as_ref().is_some_and(|services| services.len() == 1);
 
-            !is_single_service || in_relations.contains(&job.id)
+            !is_single_service || in_relations.contains(&job.id) || job.crew.is_some_and(|crew| crew > total_vehicles)
         })
         .map(|job| job.id.clone())
         .collect::<Vec<_>>();
@@ -233,8 +236,8 @@ fn check_e1109_invalid_crew(ctx: &ValidationContext) -> Result<(), FormatError> 
             "E1109".to_string(),
             "job has an invalid crew".to_string(),
             format!(
-                "set a crew of at least one, and above one only on a job with a single service task which is not \
-                 used in relations: ids '{}'",
+                "set a crew of at least one and at most the amount of vehicles ({total_vehicles}), and above one \
+                 only on a job with a single service task which is not used in relations: ids '{}'",
                 ids.into_iter().chain(zero_ids).collect::<Vec<_>>().join(", ")
             ),
         ))

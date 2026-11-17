@@ -117,3 +117,48 @@ can_detect_invalid_due_date! {
     case04_out_of_range: (Some("2024-13-04T17:00:00Z"), true),
     case05_not_a_date: (Some("tomorrow"), true),
 }
+
+parameterized_test! {can_detect_invalid_crew, (crew, is_service, in_relations, is_invalid), {
+    can_detect_invalid_crew_impl(crew, is_service, in_relations, is_invalid);
+}}
+
+can_detect_invalid_crew! {
+    case01_no_crew: (None, true, false, false),
+    case02_crew_of_one: (Some(1), true, false, false),
+    case03_crew_of_fleet_size: (Some(2), true, false, false),
+    case04_zero: (Some(0), true, false, true),
+    case05_larger_than_fleet: (Some(3), true, false, true),
+    case06_huge: (Some(usize::MAX), true, false, true),
+    case07_not_a_service: (Some(2), false, false, true),
+    case08_in_relations: (Some(2), true, true, true),
+}
+
+fn can_detect_invalid_crew_impl(crew: Option<usize>, is_service: bool, in_relations: bool, is_invalid: bool) {
+    let job = if is_service { create_service_job("job1", (1., 0.)) } else { create_delivery_job("job1", (1., 0.)) };
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![Job { crew, ..job }],
+            relations: in_relations.then(|| {
+                vec![Relation {
+                    type_field: RelationType::Any,
+                    jobs: vec!["job1".to_string()],
+                    vehicle_id: "my_vehicle_1".to_string(),
+                    shift_index: None,
+                }]
+            }),
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![VehicleType {
+                vehicle_ids: vec!["my_vehicle_1".to_string(), "my_vehicle_2".to_string()],
+                ..create_default_vehicle_type()
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+
+    let result = check_e1109_invalid_crew(&ValidationContext::new(&problem, None, &CoordIndex::new(&problem)));
+
+    assert_eq!(result.err().map(|err| err.code), is_invalid.then(|| "E1109".to_string()));
+}

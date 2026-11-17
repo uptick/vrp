@@ -1,3 +1,4 @@
+use crate::format::problem::PragmaticProblem;
 use crate::format::problem::*;
 use crate::format::solution::*;
 use crate::format_time;
@@ -109,18 +110,35 @@ fn can_serve_crew_of_three() {
 }
 
 #[test]
-fn can_unassign_crew_job_when_there_is_only_one_vehicle() {
+fn can_unassign_crew_job_when_only_one_vehicle_can_serve_it() {
+    let crew_job =
+        Job { skills: Some(all_of_skills(vec!["licence".to_string()])), ..create_crew_job("crew", (5., 0.), 2, 10.) };
+    let skilled_vehicle =
+        VehicleType { skills: Some(vec!["licence".to_string()]), ..create_vehicle_at("v1", (0., 0.), (0., 1000.)) };
     let problem = create_crew_problem(
-        vec![create_crew_job("crew", (5., 0.), 2, 10.), create_service_job("job1", (1., 0.))],
-        vec![create_vehicle_at("v1", (0., 0.), (0., 1000.))],
+        vec![crew_job, create_service_job("job1", (1., 0.))],
+        vec![skilled_vehicle, create_vehicle_at("v2", (10., 0.), (0., 1000.))],
     );
     let matrix = create_matrix_from_problem(&problem);
 
     let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
 
     assert!(get_crew_members(&solution, "crew").is_empty());
-    assert_eq!(get_unassigned_codes(&solution, "crew"), Some(vec!["CREW_CONSTRAINT".to_string()]));
+    assert!(get_unassigned_codes(&solution, "crew").unwrap().contains(&"CREW_CONSTRAINT".to_string()));
     assert_eq!(get_crew_members(&solution, "job1").len(), 1);
+}
+
+#[test]
+fn can_reject_crew_larger_than_fleet() {
+    let problem = create_crew_problem(
+        vec![create_crew_job("crew", (5., 0.), 2, 10.)],
+        vec![create_vehicle_at("v1", (0., 0.), (0., 1000.))],
+    );
+
+    let result = problem.read_pragmatic();
+
+    let codes = result.err().map(|errors| errors.into_iter().map(|err| err.code).collect::<Vec<_>>());
+    assert_eq!(codes, Some(vec!["E1109".to_string()]));
 }
 
 #[test]
