@@ -5,6 +5,7 @@ mod jobs_test;
 use super::*;
 use crate::parse_time_safe;
 use crate::utils::combine_error_results;
+use std::collections::HashSet;
 use vrp_core::models::common::MultiDimLoad;
 
 /// Checks that plan has no jobs with duplicate ids.
@@ -199,6 +200,47 @@ fn check_e1108_invalid_due_date(ctx: &ValidationContext) -> Result<(), FormatErr
     }
 }
 
+/// Checks that a crew is set only on a job with a single service task, and not on a job in relations.
+fn check_e1109_invalid_crew(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let in_relations = ctx
+        .problem
+        .plan
+        .relations
+        .iter()
+        .flat_map(|relations| relations.iter().flat_map(|relation| relation.jobs.iter()))
+        .collect::<HashSet<_>>();
+
+    let ids = ctx
+        .jobs()
+        .filter(|job| job.crew.is_some_and(|crew| crew > 1))
+        .filter(|job| {
+            let is_single_service = job.pickups.is_none()
+                && job.deliveries.is_none()
+                && job.replacements.is_none()
+                && job.services.as_ref().is_some_and(|services| services.len() == 1);
+
+            !is_single_service || in_relations.contains(&job.id)
+        })
+        .map(|job| job.id.clone())
+        .collect::<Vec<_>>();
+
+    let zero_ids = ctx.jobs().filter(|job| job.crew == Some(0)).map(|job| job.id.clone()).collect::<Vec<_>>();
+
+    if ids.is_empty() && zero_ids.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1109".to_string(),
+            "job has an invalid crew".to_string(),
+            format!(
+                "set a crew of at least one, and above one only on a job with a single service task which is not \
+                 used in relations: ids '{}'",
+                ids.into_iter().chain(zero_ids).collect::<Vec<_>>().join(", ")
+            ),
+        ))
+    }
+}
+
 /// Validates jobs from the plan.
 pub fn validate_jobs(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     combine_error_results(&[
@@ -211,6 +253,7 @@ pub fn validate_jobs(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
         check_e1106_negative_duration(ctx),
         check_e1107_negative_demand(ctx),
         check_e1108_invalid_due_date(ctx),
+        check_e1109_invalid_crew(ctx),
     ])
     .map_err(From::from)
 }

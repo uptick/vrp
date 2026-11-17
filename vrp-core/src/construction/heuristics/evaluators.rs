@@ -6,8 +6,9 @@ use rosomaxa::prelude::UnwrapValue;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
+use crate::construction::features::get_crew_window;
 use crate::construction::heuristics::*;
-use crate::models::common::Timestamp;
+use crate::models::common::{TimeWindow, Timestamp};
 use crate::models::problem::{Job, Multi, Single};
 use crate::models::solution::{Activity, Leg, Place};
 use crate::models::{ConstraintViolation, GoalContext, ViolationCode};
@@ -285,6 +286,8 @@ fn analyze_insertion_in_route(
     init: SingleContext,
 ) -> SingleContext {
     let start_time = route_ctx.route().tour.start().map_or(Timestamp::default(), |act| act.schedule.departure);
+    // a copy of a crew job has to start together with the copies already placed on other routes
+    let crew_window = get_crew_window(solution_ctx, route_ctx, single);
     let mut analyze_leg_insertion = |leg: Leg<'_>, result: &mut SingleContext| {
         analyze_insertion_in_route_leg(
             eval_ctx,
@@ -294,7 +297,7 @@ fn analyze_insertion_in_route(
             single,
             target,
             &route_costs,
-            start_time,
+            (start_time, crew_window.as_ref()),
             result,
         )
     };
@@ -331,7 +334,7 @@ fn analyze_insertion_in_route_leg(
     single: &Single,
     target: &mut Activity,
     route_costs: &InsertionCost,
-    start_time: Timestamp,
+    (start_time, crew_window): (Timestamp, Option<&TimeWindow>),
     single_ctx: &mut SingleContext,
 ) -> ControlFlow<()> {
     let (items, index) = leg;
@@ -349,6 +352,13 @@ fn analyze_insertion_in_route_leg(
         // iterate over time windows of the place
         for time in place.times.iter() {
             target.place.time = time.to_time_window(start_time);
+
+            if let Some(crew_window) = crew_window {
+                match target.place.time.overlapping(crew_window) {
+                    Some(time) => target.place.time = time,
+                    None => continue,
+                }
+            }
 
             let activity_ctx = ActivityContext { index, prev, target, next };
             let move_ctx = MoveContext::activity(solution_ctx, route_ctx, &activity_ctx);

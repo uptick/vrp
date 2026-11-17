@@ -26,6 +26,7 @@ pub fn create_job(id: &str) -> Job {
         due: None,
         group: None,
         compatibility: None,
+        crew: None,
     }
 }
 

@@ -5,6 +5,7 @@ mod breaks;
 mod capacity;
 mod clustering;
 mod compatibility;
+mod crew;
 mod fleet;
 mod format;
 mod group;

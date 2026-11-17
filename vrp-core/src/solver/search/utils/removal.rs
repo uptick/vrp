@@ -2,6 +2,7 @@
 #[path = "../../../../tests/unit/solver/search/utils/removal_test.rs"]
 mod removal_test;
 
+use crate::construction::features::JobCrewDimension;
 use crate::construction::heuristics::*;
 use crate::models::problem::{Actor, Job};
 use crate::solver::search::RemovalLimits;
@@ -67,10 +68,35 @@ impl JobRemovalTracker {
             self.activities_left = (self.activities_left - get_total_activities(job) as i32).max(0);
 
             solution.required.push(job.clone());
+            self.remove_crew_copies(solution, job);
             return true;
         }
 
         false
+    }
+
+    /// Removes other copies of a crew job, so that the whole crew is re-planned together.
+    fn remove_crew_copies(&mut self, solution: &mut SolutionContext, job: &Job) {
+        let Some(crew) = job.dimens().get_job_crew() else { return };
+
+        let copies = solution
+            .routes
+            .iter()
+            .flat_map(|route_ctx| route_ctx.route().tour.jobs())
+            .filter(|other| *other != job && !solution.locked.contains(*other))
+            .filter(|other| other.dimens().get_job_crew().is_some_and(|other| other.id == crew.id))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        copies.into_iter().for_each(|copy| {
+            if let Some(route_ctx) = solution.routes.iter_mut().find(|route_ctx| route_ctx.route().tour.contains(&copy))
+            {
+                route_ctx.route_mut().tour.remove(&copy);
+                self.affected_actors.insert(route_ctx.route().actor.clone());
+            }
+            self.removed_jobs.insert(copy.clone());
+            solution.required.push(copy);
+        });
     }
 
     /// Tries to remove jobs from the route with given index. The route could be removed completely
@@ -125,8 +151,9 @@ impl JobRemovalTracker {
             self.removed_jobs.insert(job.clone());
         });
 
-        solution.required.extend(jobs);
+        solution.required.extend(jobs.iter().cloned());
         solution.keep_routes(&|route_ctx| route_ctx.route().actor != actor);
+        jobs.iter().for_each(|job| self.remove_crew_copies(solution, job));
 
         self.affected_actors.insert(actor);
         self.routes_left = (self.routes_left - 1).max(0);

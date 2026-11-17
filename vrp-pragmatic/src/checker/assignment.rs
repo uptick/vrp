@@ -8,13 +8,20 @@ use crate::format::solution::activity_matcher::*;
 use crate::utils::combine_error_results;
 use std::collections::HashSet;
 use vrp_core::construction::clustering::vicinity::ServingPolicy;
+use vrp_core::models::common::Timestamp;
 use vrp_core::models::solution::Place;
 use vrp_core::prelude::GenericResult;
 use vrp_core::utils::GenericError;
 
 /// Checks assignment of jobs and vehicles.
 pub fn check_assignment(ctx: &CheckerContext) -> Result<(), Vec<GenericError>> {
-    combine_error_results(&[check_vehicles(ctx), check_jobs_presence(ctx), check_jobs_match(ctx), check_groups(ctx)])
+    combine_error_results(&[
+        check_vehicles(ctx),
+        check_jobs_presence(ctx),
+        check_jobs_match(ctx),
+        check_groups(ctx),
+        check_crews(ctx),
+    ])
 }
 
 /// Checks that vehicles in each tour are used once per shift and they are known in problem.
@@ -56,7 +63,9 @@ fn check_jobs_presence(ctx: &CheckerContext) -> GenericResult<()> {
     let activity_types: HashSet<_> = vec!["pickup", "delivery", "service", "replacement"].into_iter().collect();
 
     let all_jobs = ctx.problem.plan.jobs.iter().map(|job| (job.id.clone(), job.clone())).collect::<HashMap<_, _>>();
-    let mut used_jobs = HashMap::<String, JobAssignment>::new();
+    let get_crew_size = |job_id: &str| all_jobs.get(job_id).and_then(|job| job.crew).filter(|&crew| crew > 1);
+    // a crew job is served once per crew member, each in its own tour
+    let mut used_jobs = HashMap::<(String, Option<(String, usize)>), JobAssignment>::new();
 
     ctx.solution.tours.iter().try_for_each(|tour| {
         tour.stops
@@ -66,8 +75,8 @@ fn check_jobs_presence(ctx: &CheckerContext) -> GenericResult<()> {
             .filter(|(_, activity)| activity_types.contains(&activity.activity_type.as_str()))
             .try_for_each(|(idx, activity)| {
                 let tour_info = (tour.vehicle_id.clone(), tour.shift_index);
-                let asgn =
-                    used_jobs.entry(activity.job_id.clone()).or_insert_with(|| new_assignment(tour_info.clone()));
+                let key = (activity.job_id.clone(), get_crew_size(&activity.job_id).map(|_| tour_info.clone()));
+                let asgn = used_jobs.entry(key).or_insert_with(|| new_assignment(tour_info.clone()));
 
                 if asgn.tour_info != tour_info {
                     return Err(GenericError::from(format!("job served in multiple tours: '{}'", activity.job_id)));
@@ -85,7 +94,7 @@ fn check_jobs_presence(ctx: &CheckerContext) -> GenericResult<()> {
             })
     })?;
 
-    used_jobs.iter().try_for_each(|(id, asgn)| {
+    used_jobs.iter().try_for_each(|((id, _), asgn)| {
         // TODO validate whether each job task is served once
         let job = all_jobs.get(id).ok_or_else(|| format!("cannot find job with id {id}"))?;
         let expected_tasks = job.pickups.as_ref().map_or(0, |p| p.len())
@@ -106,6 +115,22 @@ fn check_jobs_presence(ctx: &CheckerContext) -> GenericResult<()> {
 
         Ok(())
     })?;
+
+    let used_crews = used_jobs.keys().filter(|(_, tour)| tour.is_some()).fold(
+        HashMap::<&String, usize>::new(),
+        |mut acc, (id, _)| {
+            *acc.entry(id).or_default() += 1;
+            acc
+        },
+    );
+    used_crews.iter().try_for_each(|(id, &used)| match get_crew_size(id) {
+        Some(size) if size != used => {
+            Err(GenericError::from(format!("crew job '{id}' served by {used} tours instead of {size}")))
+        }
+        _ => Ok(()),
+    })?;
+
+    let used_jobs = used_jobs.into_keys().map(|(id, _)| (id, ())).collect::<HashMap<_, _>>();
 
     let all_unassigned_jobs = ctx
         .solution
@@ -145,6 +170,37 @@ fn check_jobs_presence(ctx: &CheckerContext) -> GenericResult<()> {
     }
 
     Ok(())
+}
+
+/// Checks that each crew job is served by different vehicles starting at the same time.
+fn check_crews(ctx: &CheckerContext) -> GenericResult<()> {
+    let mut crews = HashMap::<String, Vec<(String, Timestamp)>>::new();
+
+    ctx.solution.tours.iter().for_each(|tour| {
+        tour.stops.iter().for_each(|stop| {
+            stop.activities()
+                .iter()
+                .filter(|activity| ctx.get_job_by_id(&activity.job_id).and_then(|job| job.crew).is_some_and(|c| c > 1))
+                .for_each(|activity| {
+                    let start = ctx.get_activity_time(stop, activity).start;
+                    crews.entry(activity.job_id.clone()).or_default().push((tour.vehicle_id.clone(), start));
+                })
+        })
+    });
+
+    crews.into_iter().try_for_each(|(id, members)| -> GenericResult<()> {
+        let vehicles = members.iter().map(|(vehicle_id, _)| vehicle_id).collect::<HashSet<_>>();
+        if vehicles.len() != members.len() {
+            return Err(format!("crew job '{id}' is served more than once by the same vehicle").into());
+        }
+
+        let start = members[0].1;
+        if members.iter().any(|(_, other)| (other - start).abs() > 1E-6) {
+            return Err(format!("crew job '{id}' is not started at the same time by all its vehicles").into());
+        }
+
+        Ok(())
+    })
 }
 
 /// Checks job constraint violations.

@@ -2,8 +2,10 @@
 #[path = "../../../tests/unit/solver/search/decompose_search_test.rs"]
 mod decompose_search_test;
 
+use crate::construction::features::get_split_crew_jobs;
 use crate::construction::heuristics::*;
 use crate::models::GoalContext;
+use crate::models::problem::Job;
 use crate::solver::search::create_environment_with_custom_quota;
 use crate::solver::*;
 use crate::utils::Either;
@@ -209,12 +211,14 @@ fn create_partial_insertion_ctx(
     let registry = solution
         .registry
         .deep_slice(|actor| routes.iter().any(|route_ctx| std::ptr::eq(route_ctx.route().actor.as_ref(), actor)));
-    let locked = if solution.locked.is_empty() {
+    let mut locked: HashSet<Job> = if solution.locked.is_empty() {
         HashSet::default()
     } else {
         let jobs = routes.iter().flat_map(|route_ctx| route_ctx.route().tour.jobs()).collect::<HashSet<_>>();
         solution.locked.iter().filter(|job| jobs.contains(*job)).cloned().collect()
     };
+    // a crew copy whose other copies are on routes outside of this part cannot see them, so it cannot move
+    locked.extend(get_split_crew_jobs(&routes));
 
     initialize_decomposed_context(InsertionContext {
         problem: insertion_ctx.problem.clone(),
