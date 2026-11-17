@@ -140,7 +140,7 @@ can_update_state_for_reserved_time! {
 
     case02_single_inside: ((0, 0, 0., 100.), (25., 30.),
               vec![(20, (0., 25.), 10.)],
-              vec![Some(0.), Some(20.), None],
+              vec![Some(0.), Some(15.), None],
               vec![(0., 0.), (20., 40.), (60., 60.)]),
 
     case03_two_inside_travel: ((0, 0, 0., 100.), (25., 30.),
@@ -150,7 +150,7 @@ can_update_state_for_reserved_time! {
 
     case04_two_inside_service: ((0, 0, 0., 100.), (35., 40.),
               vec![(10, (0., 20.), 10.), (20, (0., 50.), 10.)],
-              vec![Some(0.), Some(15.), Some(50.), None],
+              vec![Some(0.), Some(20.), Some(50.), None],
               vec![(0., 0.), (10., 20.), (30., 50.), (70., 70.)]),
 }
 
@@ -298,4 +298,129 @@ fn can_avoid_reserved_time_when_driving_impl(
     avoid_reserved_time_when_driving(route_ctx.route_mut(), &reserved_times_fn);
 
     assert_eq!(get_schedules(&route_ctx), expected_schedules)
+}
+
+fn create_slot(earliest: Timestamp, latest: Timestamp, duration: Duration) -> ReservedSlot {
+    ReservedSlot { earliest, latest, duration }
+}
+
+fn get_service_start(slots: &[ReservedSlot], arrival: Timestamp, tw: &TimeWindow, duration: Duration) -> Timestamp {
+    estimate_service_start(slots.iter().copied(), arrival, tw, duration)
+        .map_or(arrival.max(tw.start), |(service_start, _)| service_start)
+}
+
+fn get_latest_arrival(
+    slots: &[ReservedSlot],
+    latest_service_start: Timestamp,
+    tw: &TimeWindow,
+    duration: Duration,
+) -> ControlFlow<Timestamp, Timestamp> {
+    let times = ActorReservedTimes { slots: slots.to_vec(), latest_ends: get_latest_ends(slots), is_offset: false };
+
+    estimate_latest_arrival(
+        times.slots_until(latest_service_start.max(tw.start) + duration, 0.),
+        latest_service_start,
+        tw,
+        duration,
+    )
+}
+
+fn get_latest_ends(slots: &[ReservedSlot]) -> Vec<Timestamp> {
+    slots
+        .iter()
+        .scan(Timestamp::MIN, |max_end, slot| {
+            *max_end = max_end.max(slot.latest_end());
+            Some(*max_end)
+        })
+        .collect()
+}
+
+parameterized_test! {can_estimate_service_start_around_reserved_time, (slots, arrival, tw, duration, expected), {
+    let slots = slots.into_iter().map(|(earliest, latest, duration)| create_slot(earliest, latest, duration)).collect::<Vec<_>>();
+    let result = estimate_service_start(slots.into_iter(), arrival, &TimeWindow::new(tw.0, tw.1), duration);
+
+    assert_eq!(result, expected);
+}}
+
+can_estimate_service_start_around_reserved_time! {
+    case01_service_is_over_before: (vec![(7., 7., 2.)], 2., (0., 100.), 5., None),
+    case02_service_starts_after: (vec![(7., 7., 2.)], 9., (0., 100.), 5., None),
+    case03_waits_for_exact_time: (vec![(7., 7., 2.)], 5., (0., 100.), 3., Some((9., 2.))),
+    case04_takes_on_arrival: (vec![(4., 7., 2.)], 5., (0., 100.), 3., Some((7., 2.))),
+    case05_fits_into_waiting: (vec![(7., 7., 2.)], 5., (9., 100.), 3., Some((9., 0.))),
+    case06_overlaps_waiting: (vec![(7., 7., 2.)], 5., (8., 100.), 3., Some((9., 2.))),
+    case07_is_not_taken_too_early: (vec![(2., 10.5, 2.)], 0., (10., 100.), 1., Some((11.5, 2.))),
+    case08_runs_into_the_next_one: (vec![(6., 6., 2.), (9., 9., 2.)], 5., (0., 100.), 3., Some((11., 4.))),
+    case09_skips_the_next_one: (vec![(6., 6., 2.), (20., 20., 2.)], 5., (0., 100.), 3., Some((8., 2.))),
+    case10_takes_the_next_one_while_waiting: (vec![(1., 1., 1.), (2., 11., 2.)], 0., (10., 100.), 3., Some((10., 0.))),
+}
+
+parameterized_test! {can_estimate_latest_arrival_around_reserved_time, (slots, latest_service_start, tw, duration, expected), {
+    let slots = slots.into_iter().map(|(earliest, latest, duration)| create_slot(earliest, latest, duration)).collect::<Vec<_>>();
+    let result = get_latest_arrival(&slots, latest_service_start, &TimeWindow::new(tw.0, tw.1), duration);
+
+    assert_eq!(result, expected);
+}}
+
+can_estimate_latest_arrival_around_reserved_time! {
+    case01_service_is_over_before: (vec![(7., 7., 2.)], 2., (0., 100.), 5., ControlFlow::Continue(2.)),
+    case02_service_starts_after: (vec![(7., 7., 2.)], 9., (0., 100.), 5., ControlFlow::Continue(9.)),
+    // NOTE break cannot start earlier, so arriving earlier does not help: finish the service before it
+    case03_finishes_before_exact_time: (vec![(7., 7., 2.)], 8., (0., 100.), 3., ControlFlow::Continue(4.)),
+    case04_takes_before_service: (vec![(4., 7., 2.)], 7., (0., 100.), 3., ControlFlow::Continue(5.)),
+    case05_cannot_take_earlier: (vec![(4., 7., 2.)], 5.5, (0., 100.), 3., ControlFlow::Continue(4.)),
+    case06_fits_into_waiting: (vec![(7., 7., 2.)], 9., (9., 100.), 3., ControlFlow::Continue(9.)),
+    case07_cannot_fit_into_waiting: (vec![(7., 7., 2.)], 8., (9., 100.), 3., ControlFlow::Break(4.)),
+    case08_cannot_finish_before: (vec![(7., 7., 2.)], 8., (5., 100.), 3., ControlFlow::Break(4.)),
+    case09_after_two: (vec![(6., 6., 2.), (9., 9., 2.)], 11., (0., 100.), 3., ControlFlow::Continue(11.)),
+    case10_before_two: (vec![(6., 6., 2.), (9., 9., 2.)], 10., (0., 100.), 3., ControlFlow::Continue(3.)),
+    case11_between_two: (vec![(6., 6., 2.), (20., 20., 2.)], 19., (0., 100.), 3., ControlFlow::Continue(17.)),
+    case12_takes_first_and_finishes_before_second: (vec![(4., 6., 2.), (8., 9., 2.)], 9.5, (0., 100.), 3., ControlFlow::Continue(4.)),
+}
+
+#[test]
+fn can_estimate_latest_arrival_as_the_opposite_of_service_start() {
+    // NOTE half steps are used to get the times which do not match reserved time bounds
+    let times = |from: i32, to: i32| (from * 2..=to * 2).map(|time| time as Timestamp / 2.);
+    let slots_variants = [
+        vec![create_slot(10., 10., 3.)],
+        vec![create_slot(6., 10., 3.)],
+        vec![create_slot(6., 10., 0.5)],
+        vec![create_slot(4., 4., 2.), create_slot(10., 10., 3.)],
+        vec![create_slot(3., 5., 2.), create_slot(8., 11., 1.)],
+        vec![create_slot(2., 2., 1.), create_slot(4., 6., 2.), create_slot(12., 12., 4.)],
+    ];
+
+    for slots in slots_variants.iter() {
+        // NOTE no arrival falls on a reserved time which has started already, as travel is delayed by it
+        let is_reachable = |arrival: Timestamp| slots.iter().all(|s| arrival <= s.latest || arrival >= s.latest_end());
+
+        for duration in [0.5, 1., 3., 6.] {
+            for tw_start in [0., 5., 9., 11., 14.] {
+                let tw = TimeWindow::new(tw_start, 100.);
+
+                for latest_service_start in times(0, 24) {
+                    let is_in_time = |arrival: Timestamp| {
+                        is_reachable(arrival)
+                            && get_service_start(slots, arrival, &tw, duration) <= latest_service_start
+                    };
+                    let message = format!("{slots:?}, duration={duration}, tw={tw:?}, start={latest_service_start}");
+
+                    match get_latest_arrival(slots, latest_service_start, &tw, duration) {
+                        ControlFlow::Continue(latest_arrival) if latest_service_start >= tw.start => {
+                            assert!(is_in_time(latest_arrival), "arriving at {latest_arrival} is late: {message}");
+                            // NOTE an earlier arrival is in time too, while a later one is not
+                            assert!(
+                                times(-8, 24).all(|arrival| !is_reachable(arrival)
+                                    || is_in_time(arrival) == (arrival <= latest_arrival)),
+                                "{latest_arrival} is not the latest arrival: {message}"
+                            );
+                        }
+                        // NOTE service cannot start before time window whenever the vehicle arrives
+                        _ => assert!(times(-8, 24).all(|arrival| !is_in_time(arrival)), "can be in time: {message}"),
+                    }
+                }
+            }
+        }
+    }
 }

@@ -7,7 +7,7 @@ use crate::format::solution::activity_matcher::get_job_tag;
 use crate::format::solution::model::Timing;
 use crate::format::solution::*;
 use vrp_core::construction::enablers::{
-    ReservedTimesIndex, estimate_service_start_with_reserved_time, get_route_intervals,
+    ReservedTimesIndex, estimate_service_start_with_reserved_times, get_route_intervals,
 };
 use vrp_core::construction::features::JobDemandDimension;
 use vrp_core::construction::heuristics::UnassignmentInfo;
@@ -331,27 +331,26 @@ fn create_tour(
 }
 
 /// Returns activity's service start (as estimated by the solver) and duration of reserved time
-/// when reserved time applies to the activity.
+/// postponing it when reserved time applies to the activity.
 fn get_reserved_service_start(
     route: &Route,
     act: &Activity,
     reserved_times_index: &ReservedTimesIndex,
 ) -> Option<(Timestamp, Duration)> {
     let offset = route.tour.start().map(|start| start.schedule.departure).unwrap_or(0.);
-    let arrival = act.schedule.arrival;
-    let schedule = TimeWindow::new(arrival, arrival.max(act.place.time.start) + act.place.duration);
-
-    reserved_times_index
+    let reserved_times = reserved_times_index
         .get(&route.actor)
         .iter()
         .flat_map(|times| times.iter())
         .map(|reserved_time| reserved_time.to_reserved_time_window(offset))
-        .find(|rt| TimeWindow::new(rt.time.end, rt.time.end + rt.duration).intersects_exclusive(&schedule))
-        .map(|rt| {
-            let service_start =
-                estimate_service_start_with_reserved_time(&rt, arrival, &act.place.time, act.place.duration);
-            (service_start, rt.duration)
-        })
+        .collect::<Vec<_>>();
+
+    estimate_service_start_with_reserved_times(
+        &reserved_times,
+        act.schedule.arrival,
+        &act.place.time,
+        act.place.duration,
+    )
 }
 
 fn format_schedule(schedule: &DomainSchedule) -> ApiSchedule {
