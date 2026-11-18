@@ -49,7 +49,18 @@ pub(crate) type ReservedTimesFn = Arc<dyn Fn(&Route, &TimeWindow) -> Option<Rese
 /// Provides way to calculate activity costs which might contain reserved time.
 ///
 /// Reserved time never interrupts a service: it is taken either before the service starts or after
-/// it is finished. See [`ReservedSlot`] for the rules.
+/// it is finished. Where it goes is not searched for: it follows from the schedule by the rules of
+/// `ReservedSlot`. So, a schedule with reserved time in the middle of a service is never built and
+/// there is nothing to filter out afterward.
+///
+/// The two estimates have different purposes:
+/// - `estimate_departure` builds the schedule: it places reserved time and postpones the service.
+/// - `estimate_arrival` is the opposite of it and is used to tell whether an activity still fits
+///   into the tour once reserved time is placed.
+///
+/// Hence `ControlFlow::Break` returned by any of them is about the activity, not about reserved
+/// time: the activity cannot be served at this position without violating its time window or
+/// delaying what comes after it too much.
 pub struct DynamicActivityCost {
     reserved_times: HashMap<Arc<Actor>, ActorReservedTimes>,
 }
@@ -91,7 +102,8 @@ impl ActivityCost for DynamicActivityCost {
             |(service_start, _)| {
                 let departure = service_start + place.duration;
 
-                // NOTE: do not allow to start work after break finished
+                // NOTE: do not allow to start work after break finished: reserved time is placed
+                // properly, but it postpones the service beyond activity's time window
                 if service_start > place.time.end {
                     // TODO this branch is the reason why departure rescheduling is disabled.
                     //      theoretically, rescheduling should be aware somehow about dynamic costs
@@ -131,6 +143,9 @@ impl ActivityCost for DynamicActivityCost {
 /// over the latest start, reserved time is taken first and the service is postponed until it is
 /// over. In that case reserved time starts as early as it is allowed, but not so early that the
 /// service is finished before the latest end: otherwise, it would be applied again afterward.
+///
+/// `apply` is the only place which decides where reserved time goes relative to a service. `revert`
+/// places nothing: it answers the opposite question for feasibility checks.
 #[derive(Clone, Copy, Debug)]
 struct ReservedSlot {
     earliest: Timestamp,
@@ -148,7 +163,7 @@ impl ReservedSlot {
         Self { earliest: self.earliest + offset, latest: self.latest + offset, ..self }
     }
 
-    /// Applies reserved time to an activity which can be served since `activity_start` for
+    /// Places reserved time around an activity which can be served since `activity_start` for
     /// `service_duration` by a vehicle which has nothing else to do since `free` time.
     /// Returns the time since the vehicle has nothing else to do once reserved time is over, or
     /// `None` if reserved time has no effect: it is either over already or starts after the service.
@@ -169,7 +184,8 @@ impl ReservedSlot {
 
     /// Does the opposite of `apply`: returns the latest `free` time which leaves the vehicle with
     /// nothing else to do by `latest_free` time once reserved time is applied. Returns `None` if
-    /// there is no such time.
+    /// there is no such time: whenever the vehicle arrives, the service cannot start in time. This
+    /// says that the activity does not fit, not that reserved time is misplaced.
     fn revert(
         &self,
         latest_free: Timestamp,
@@ -331,8 +347,9 @@ fn estimate_latest_arrival(
 
         match slot.revert(latest_free, activity_tw.start, service_duration) {
             Some(value) => latest_free = value,
-            // NOTE service cannot start in time whenever the vehicle arrives. Return the arrival
-            // which at least does not postpone the service more than necessary
+            // NOTE service cannot start in time whenever the vehicle arrives: the activity does not
+            // fit here, which is for the caller to handle (e.g. to reject an insertion). Return the
+            // arrival which at least does not postpone the service more than necessary
             None => return ControlFlow::Break(latest_free.min(slot.latest - service_duration)),
         }
     }
