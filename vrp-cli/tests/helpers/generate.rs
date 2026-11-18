@@ -13,6 +13,7 @@ pub fn create_empty_job() -> Job {
         due: None,
         group: None,
         compatibility: None,
+        crew: None,
     }
 }
 
