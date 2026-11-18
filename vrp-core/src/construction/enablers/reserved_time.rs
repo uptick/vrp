@@ -47,14 +47,37 @@ pub type ReservedTimesIndex = HashMap<Arc<Actor>, Vec<ReservedTimeSpan>>;
 pub(crate) type ReservedTimesFn = Arc<dyn Fn(&Route, &TimeWindow) -> Option<ReservedTimeWindow> + Send + Sync>;
 
 /// Provides way to calculate activity costs which might contain reserved time.
+///
+/// Reserved time never interrupts a service: it is taken either before the service starts or after
+/// it is finished. Where it goes is not searched for: it follows from the schedule by the rules of
+/// `ReservedSlot`. So, a schedule with reserved time in the middle of a service is never built and
+/// there is nothing to filter out afterward.
+///
+/// The two estimates have different purposes:
+/// - `estimate_departure` builds the schedule: it places reserved time and postpones the service.
+/// - `estimate_arrival` is the opposite of it and is used to tell whether an activity still fits
+///   into the tour once reserved time is placed.
+///
+/// Hence `ControlFlow::Break` returned by any of them is about the activity, not about reserved
+/// time: the activity cannot be served at this position without violating its time window or
+/// delaying what comes after it too much.
 pub struct DynamicActivityCost {
-    reserved_times_fn: ReservedTimesFn,
+    reserved_times: HashMap<Arc<Actor>, ActorReservedTimes>,
 }
 
 impl DynamicActivityCost {
     /// Creates a new instance of `DynamicActivityCost` with given reserved time function.
     pub fn new(reserved_times_index: ReservedTimesIndex) -> Result<Self, GenericError> {
-        Ok(Self { reserved_times_fn: create_reserved_times_fn(reserved_times_index)? })
+        // NOTE reserved times have to conform the same rules as the ones used by reserved time lookup
+        create_reserved_times_fn(reserved_times_index.clone())?;
+
+        let reserved_times = reserved_times_index
+            .into_iter()
+            .filter(|(_, times)| !times.is_empty())
+            .map(|(actor, times)| (actor, ActorReservedTimes::new(&times)))
+            .collect();
+
+        Ok(Self { reserved_times })
     }
 }
 
@@ -65,37 +88,31 @@ impl ActivityCost for DynamicActivityCost {
         activity: &Activity,
         arrival: Timestamp,
     ) -> ControlFlow<Timestamp, Timestamp> {
-        let activity_start = arrival.max(activity.place.time.start);
-        let departure = activity_start + activity.place.duration;
-        let schedule = TimeWindow::new(arrival, departure);
+        let place = &activity.place;
+        let departure = arrival.max(place.time.start) + place.duration;
 
-        (self.reserved_times_fn)(route, &schedule).map_or(ControlFlow::Continue(departure), |reserved_time| {
-            // NOTE we ignore reserved_time.time.start and consider the latest possible time only
-            let reserved_tw = &reserved_time.time;
-            let reserved_tw = TimeWindow::new(reserved_tw.end, reserved_tw.end + reserved_time.duration);
+        let Some(reserved_times) = self.reserved_times.get(&route.actor) else {
+            return ControlFlow::Continue(departure);
+        };
 
-            assert!(reserved_tw.intersects(&schedule));
+        let slots = reserved_times.slots_since(arrival, reserved_times.offset(route));
 
-            let activity_tw = &activity.place.time;
+        estimate_service_start(slots, arrival, &place.time, place.duration).map_or(
+            ControlFlow::Continue(departure),
+            |(service_start, _)| {
+                let departure = service_start + place.duration;
 
-            let extra_duration = if reserved_tw.start < activity_tw.start {
-                let waiting_time = TimeWindow::new(arrival, activity_tw.start);
-                let overlapping = waiting_time.overlapping(&reserved_tw).map(|tw| tw.duration()).unwrap_or(0.);
-
-                reserved_time.duration - overlapping
-            } else {
-                reserved_time.duration
-            };
-
-            // NOTE: do not allow to start or restart work after break finished
-            if activity_start + extra_duration > activity.place.time.end {
-                // TODO this branch is the reason why departure rescheduling is disabled.
-                //      theoretically, rescheduling should be aware somehow about dynamic costs
-                ControlFlow::Break(departure + extra_duration)
-            } else {
-                ControlFlow::Continue(departure + extra_duration)
-            }
-        })
+                // NOTE: do not allow to start work after break finished: reserved time is placed
+                // properly, but it postpones the service beyond activity's time window
+                if service_start > place.time.end {
+                    // TODO this branch is the reason why departure rescheduling is disabled.
+                    //      theoretically, rescheduling should be aware somehow about dynamic costs
+                    ControlFlow::Break(departure)
+                } else {
+                    ControlFlow::Continue(departure)
+                }
+            },
+        )
     }
 
     fn estimate_arrival(
@@ -104,14 +121,240 @@ impl ActivityCost for DynamicActivityCost {
         activity: &Activity,
         departure: Timestamp,
     ) -> ControlFlow<Timestamp, Timestamp> {
-        let arrival = activity.place.time.end.min(departure - activity.place.duration);
-        let schedule = TimeWindow::new(arrival, departure);
+        let place = &activity.place;
+        let latest_service_start = place.time.end.min(departure - place.duration);
 
-        let value = (self.reserved_times_fn)(route, &schedule)
-            .map_or(arrival, |reserved_time| (arrival - reserved_time.duration).max(activity.place.time.start));
+        let Some(reserved_times) = self.reserved_times.get(&route.actor) else {
+            return ControlFlow::Continue(latest_service_start);
+        };
 
-        ControlFlow::Continue(value)
+        let offset = reserved_times.offset(route);
+        // NOTE reserved times which start later cannot be reached by the service
+        let slots = reserved_times.slots_until(latest_service_start.max(place.time.start) + place.duration, offset);
+
+        estimate_latest_arrival(slots, latest_service_start, &place.time, place.duration)
     }
+}
+
+/// A reserved time which starts within `[earliest, latest]` and lasts for `duration`.
+///
+/// The rest of the solver (travel, lookup) considers reserved time at its latest start only. An
+/// activity is different, as its service cannot be interrupted. So, when the service would run
+/// over the latest start, reserved time is taken first and the service is postponed until it is
+/// over. In that case reserved time starts as early as it is allowed, but not so early that the
+/// service is finished before the latest end: otherwise, it would be applied again afterward.
+///
+/// `apply` is the only place which decides where reserved time goes relative to a service. `revert`
+/// places nothing: it answers the opposite question for feasibility checks.
+#[derive(Clone, Copy, Debug)]
+struct ReservedSlot {
+    earliest: Timestamp,
+    latest: Timestamp,
+    duration: Duration,
+}
+
+impl ReservedSlot {
+    /// Returns the time when reserved time is over if it starts at the latest time.
+    fn latest_end(&self) -> Timestamp {
+        self.latest + self.duration
+    }
+
+    fn shift(self, offset: Timestamp) -> Self {
+        Self { earliest: self.earliest + offset, latest: self.latest + offset, ..self }
+    }
+
+    /// Places reserved time around an activity which can be served since `activity_start` for
+    /// `service_duration` by a vehicle which has nothing else to do since `free` time.
+    /// Returns the time since the vehicle has nothing else to do once reserved time is over, or
+    /// `None` if reserved time has no effect: it is either over already or starts after the service.
+    fn apply(&self, free: Timestamp, activity_start: Timestamp, service_duration: Duration) -> Option<Timestamp> {
+        let service_start = free.max(activity_start);
+
+        if free >= self.latest_end() || self.latest >= service_start + service_duration {
+            return None;
+        }
+
+        Some(if self.latest_end() <= service_start {
+            // NOTE reserved time fits into waiting time at its latest start
+            self.latest_end()
+        } else {
+            free.max(self.earliest).max(self.latest - service_duration) + self.duration
+        })
+    }
+
+    /// Does the opposite of `apply`: returns the latest `free` time which leaves the vehicle with
+    /// nothing else to do by `latest_free` time once reserved time is applied. Returns `None` if
+    /// there is no such time: whenever the vehicle arrives, the service cannot start in time. This
+    /// says that the activity does not fit, not that reserved time is misplaced.
+    fn revert(
+        &self,
+        latest_free: Timestamp,
+        activity_start: Timestamp,
+        service_duration: Duration,
+    ) -> Option<Timestamp> {
+        let latest_before = self.latest - service_duration;
+
+        if latest_free >= self.latest_end() {
+            // NOTE reserved time is over
+            Some(latest_free)
+        } else if activity_start >= self.latest_end() {
+            // NOTE reserved time is taken while waiting and cannot be over in time
+            None
+        } else if latest_free - self.duration >= self.earliest.max(latest_before) {
+            // NOTE reserved time is taken first and the service is postponed
+            Some(latest_free - self.duration)
+        } else if activity_start <= latest_before {
+            // NOTE service has to be finished before reserved time starts
+            Some(latest_free.min(latest_before))
+        } else {
+            None
+        }
+    }
+}
+
+impl From<&ReservedTimeWindow> for ReservedSlot {
+    fn from(reserved_time: &ReservedTimeWindow) -> Self {
+        Self { earliest: reserved_time.time.start, latest: reserved_time.time.end, duration: reserved_time.duration }
+    }
+}
+
+/// Keeps reserved times of a single actor.
+struct ActorReservedTimes {
+    /// Reserved times sorted by their latest start. Relative to tour's start when `is_offset` is set.
+    slots: Vec<ReservedSlot>,
+    /// For each slot, the greatest latest end among it and the slots before it.
+    latest_ends: Vec<Timestamp>,
+    is_offset: bool,
+}
+
+impl ActorReservedTimes {
+    fn new(times: &[ReservedTimeSpan]) -> Self {
+        let mut slots = times
+            .iter()
+            .map(|span| {
+                let (earliest, latest) = match &span.time {
+                    TimeSpan::Window(time) => (time.start, time.end),
+                    TimeSpan::Offset(time) => (time.start, time.end),
+                };
+                ReservedSlot { earliest, latest, duration: span.duration }
+            })
+            .collect::<Vec<_>>();
+        slots.sort_by(|a, b| a.latest.total_cmp(&b.latest));
+
+        let latest_ends = slots
+            .iter()
+            .scan(Timestamp::MIN, |max_end, slot| {
+                *max_end = max_end.max(slot.latest_end());
+                Some(*max_end)
+            })
+            .collect();
+
+        Self {
+            slots,
+            latest_ends,
+            is_offset: matches!(times.first().map(|span| &span.time), Some(TimeSpan::Offset(_))),
+        }
+    }
+
+    fn offset(&self, route: &Route) -> Timestamp {
+        if self.is_offset { route.tour.start().map_or(0., |start| start.schedule.departure) } else { 0. }
+    }
+
+    /// Returns reserved times which might not be over by given time, the earliest first.
+    fn slots_since(&self, time: Timestamp, offset: Timestamp) -> impl Iterator<Item = ReservedSlot> + '_ {
+        let idx = self.latest_ends.partition_point(|latest_end| latest_end + offset <= time);
+
+        self.slots[idx..].iter().map(move |slot| slot.shift(offset))
+    }
+
+    /// Returns reserved times with the latest start before given time, the latest first. Each one
+    /// comes with the greatest latest end among it and the reserved times before it.
+    fn slots_until(&self, time: Timestamp, offset: Timestamp) -> impl Iterator<Item = (ReservedSlot, Timestamp)> + '_ {
+        let idx = self.slots.partition_point(|slot| slot.latest + offset < time);
+
+        self.slots[..idx]
+            .iter()
+            .zip(self.latest_ends[..idx].iter())
+            .rev()
+            .map(move |(slot, latest_end)| (slot.shift(offset), latest_end + offset))
+    }
+}
+
+/// Estimates when service at an activity starts when reserved times apply to it, and how much reserved
+/// time postpones it. Returns `None` when no reserved time applies.
+///
+/// Reserved time never interrupts a service: it is either taken while waiting for the activity's
+/// time window to open, or the service is postponed until the reserved time is finished. Postponing
+/// the service past one reserved time can move it into the next one, so each of them is applied in turn.
+pub fn estimate_service_start_with_reserved_times(
+    reserved_times: &[ReservedTimeWindow],
+    arrival: Timestamp,
+    activity_tw: &TimeWindow,
+    service_duration: Duration,
+) -> Option<(Timestamp, Duration)> {
+    let mut slots = reserved_times.iter().map(ReservedSlot::from).collect::<Vec<_>>();
+    slots.sort_by(|a, b| a.latest.total_cmp(&b.latest));
+
+    estimate_service_start(slots.into_iter(), arrival, activity_tw, service_duration)
+}
+
+/// Estimates service start and duration of reserved times which postpone it. Expects reserved times
+/// to be sorted by their latest start, the earliest first.
+fn estimate_service_start(
+    slots: impl Iterator<Item = ReservedSlot>,
+    arrival: Timestamp,
+    activity_tw: &TimeWindow,
+    service_duration: Duration,
+) -> Option<(Timestamp, Duration)> {
+    let mut free = arrival;
+    let mut postponed_by = None;
+
+    for slot in slots {
+        let service_start = free.max(activity_tw.start);
+
+        // NOTE service is finished before this and any later reserved time starts
+        if slot.latest >= service_start + service_duration {
+            break;
+        }
+
+        if let Some(free_after) = slot.apply(free, activity_tw.start, service_duration) {
+            let duration = if free_after > service_start { slot.duration } else { 0. };
+
+            postponed_by = Some(postponed_by.unwrap_or(0.) + duration);
+            free = free_after;
+        }
+    }
+
+    postponed_by.map(|postponed_by| (free.max(activity_tw.start), postponed_by))
+}
+
+/// Estimates the latest arrival which allows service to start not later than `latest_service_start`.
+/// This is the opposite of `estimate_service_start`, hence reserved times are expected in the
+/// opposite order: the latest first.
+fn estimate_latest_arrival(
+    slots: impl Iterator<Item = (ReservedSlot, Timestamp)>,
+    latest_service_start: Timestamp,
+    activity_tw: &TimeWindow,
+    service_duration: Duration,
+) -> ControlFlow<Timestamp, Timestamp> {
+    let mut latest_free = latest_service_start;
+
+    for (slot, latest_end) in slots {
+        // NOTE this and all earlier reserved times are over
+        if latest_free >= latest_end {
+            break;
+        }
+
+        match slot.revert(latest_free, activity_tw.start, service_duration) {
+            Some(value) => latest_free = value,
+            // NOTE service cannot start in time whenever the vehicle arrives: the activity does not
+            // fit here, which is for the caller to handle (e.g. to reject an insertion). Return the
+            // arrival which at least does not postpone the service more than necessary
+            None => return ControlFlow::Break(latest_free.min(slot.latest - service_duration)),
+        }
+    }
+
+    ControlFlow::Continue(latest_free)
 }
 
 /// Provides way to calculate transport costs which might contain reserved time.

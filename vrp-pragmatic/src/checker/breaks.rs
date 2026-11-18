@@ -10,7 +10,32 @@ use vrp_core::utils::GenericError;
 
 /// Checks that breaks are properly assigned.
 pub fn check_breaks(context: &CheckerContext) -> Result<(), Vec<GenericError>> {
-    combine_error_results(&[check_break_assignment(context)])
+    combine_error_results(&[check_break_assignment(context), check_break_does_not_interrupt_jobs(context)])
+}
+
+/// Checks that break is taken either before or after job activity, not in the middle of it.
+fn check_break_does_not_interrupt_jobs(context: &CheckerContext) -> GenericResult<()> {
+    context.solution.tours.iter().try_for_each(|tour| {
+        tour.stops.iter().try_for_each(|stop| {
+            let activities = stop.activities();
+            let (breaks, jobs): (Vec<_>, Vec<_>) = activities
+                .iter()
+                .filter(|activity| !matches!(activity.activity_type.as_str(), "departure" | "arrival"))
+                .map(|activity| (activity, get_time_window(stop, activity)))
+                .partition(|(activity, _)| activity.activity_type == "break");
+
+            breaks.iter().try_for_each(|(_, break_tw)| {
+                match jobs.iter().find(|(_, job_tw)| job_tw.intersects_exclusive(break_tw)) {
+                    Some((job, job_tw)) => Err(format!(
+                        "break '{break_tw:?}' interrupts job '{}' at '{job_tw:?}' in tour '{}'",
+                        job.job_id, tour.vehicle_id
+                    )
+                    .into()),
+                    None => Ok(()),
+                }
+            })
+        })
+    })
 }
 
 fn check_break_assignment(context: &CheckerContext) -> GenericResult<()> {

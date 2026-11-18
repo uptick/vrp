@@ -81,14 +81,192 @@ fn can_assign_break_during_travel() {
     );
 }
 
-#[test]
-fn can_assign_break_during_activity() {
+parameterized_test! {can_take_break_before_activity_instead_of_interrupting_it, (earliest, expected_break, expected_job, expected_waiting), {
+    can_take_break_before_activity_instead_of_interrupting_it_impl(earliest, expected_break, expected_job, expected_waiting);
+}}
+
+can_take_break_before_activity_instead_of_interrupting_it! {
+    case01_exact_time_waits_for_break: (7., (7., 9.), (9., 12.), 2),
+    case02_flexible_time_takes_break_on_arrival: (4., (5., 7.), (7., 10.), 0),
+}
+
+fn can_take_break_before_activity_instead_of_interrupting_it_impl(
+    earliest: f64,
+    expected_break: (f64, f64),
+    expected_job: (f64, f64),
+    expected_waiting: i64,
+) {
     let is_open = false;
     let problem = create_problem(
         vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
         VehicleBreak::Required {
             id: None,
-            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(7.), latest: format_time(7.) },
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(earliest), latest: format_time(7.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    let matrix = create_matrix_from_problem(&problem);
+    let job_end = expected_job.1;
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert_eq!(
+        solution,
+        SolutionBuilder::default()
+            .tour(
+                TourBuilder::default()
+                    .stops(vec![
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(0., 0.)
+                            .load(vec![1])
+                            .build_departure(),
+                        StopBuilder::default()
+                            .coordinate((5., 0.))
+                            .schedule_stamp(5., job_end)
+                            .load(vec![0])
+                            .distance(5)
+                            .activity(
+                                ActivityBuilder::break_type().time_stamp(expected_break.0, expected_break.1).build()
+                            )
+                            .activity(
+                                ActivityBuilder::delivery()
+                                    .job_id("job1")
+                                    .coordinate((5., 0.))
+                                    .time_stamp(expected_job.0, expected_job.1)
+                                    .build()
+                            )
+                            .build(),
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(job_end + 5., job_end + 5.)
+                            .load(vec![0])
+                            .distance(10)
+                            .build_arrival(),
+                    ])
+                    .statistic(
+                        StatisticBuilder::default()
+                            .driving(10)
+                            .serving(3)
+                            .waiting(expected_waiting)
+                            .break_time(2)
+                            .build()
+                    )
+                    .build()
+            )
+            .build()
+    );
+}
+
+fn create_problem_with_two_exact_breaks() -> Problem {
+    let is_open = false;
+    let create_break = |start: f64| VehicleBreak::Required {
+        id: None,
+        time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(start), latest: format_time(start) },
+        duration: 2.,
+    };
+    let mut problem =
+        create_problem(vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)], create_break(6.), is_open);
+    problem.fleet.vehicles[0].shifts[0].breaks.as_mut().unwrap().push(create_break(9.));
+
+    problem
+}
+
+#[test]
+fn can_take_second_break_when_first_one_postpones_activity_into_it() {
+    let problem = create_problem_with_two_exact_breaks();
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert_eq!(
+        solution,
+        SolutionBuilder::default()
+            .tour(
+                TourBuilder::default()
+                    .stops(vec![
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(0., 0.)
+                            .load(vec![1])
+                            .build_departure(),
+                        StopBuilder::default()
+                            .coordinate((5., 0.))
+                            .schedule_stamp(5., 14.)
+                            .load(vec![0])
+                            .distance(5)
+                            .activity(ActivityBuilder::break_type().time_stamp(6., 8.).build())
+                            .activity(ActivityBuilder::break_type().time_stamp(9., 11.).build())
+                            .activity(
+                                ActivityBuilder::delivery()
+                                    .job_id("job1")
+                                    .coordinate((5., 0.))
+                                    .time_stamp(11., 14.)
+                                    .build()
+                            )
+                            .build(),
+                        StopBuilder::default()
+                            .coordinate((0., 0.))
+                            .schedule_stamp(19., 19.)
+                            .load(vec![0])
+                            .distance(10)
+                            .build_arrival(),
+                    ])
+                    .statistic(StatisticBuilder::default().driving(10).serving(3).waiting(2).break_time(4).build())
+                    .build()
+            )
+            .build()
+    );
+}
+
+#[test]
+fn can_skip_activity_when_second_break_postpones_it_past_shift_end() {
+    let mut problem = create_problem_with_two_exact_breaks();
+    problem.fleet.vehicles[0].shifts[0].end.as_mut().unwrap().latest = format_time(16.);
+    let matrix = create_matrix_from_problem(&problem);
+
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert!(solution.tours.is_empty());
+    assert_eq!(solution.unassigned.iter().flatten().map(|job| job.job_id.as_str()).collect::<Vec<_>>(), vec!["job1"]);
+}
+
+#[test]
+fn can_keep_tour_within_shift_when_break_postpones_activity() {
+    let is_open = false;
+    let mut problem = create_problem(
+        vec![
+            create_delivery_job_with_duration("job1", (1., 0.), 3.),
+            create_delivery_job_with_duration("job2", (1., 0.), 3.),
+        ],
+        VehicleBreak::Required {
+            id: None,
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(6.), latest: format_time(6.) },
+            duration: 2.,
+        },
+        is_open,
+    );
+    problem.fleet.vehicles[0].shifts[0].end.as_mut().unwrap().latest = format_time(11.);
+    let matrix = create_matrix_from_problem(&problem);
+
+    // NOTE the second job would run over the break, hence it would wait for the break to start and
+    // finish at 11, a unit away from the depot. The checker fails if the tour runs over the shift end
+    let solution = solve_with_metaheuristic(problem, Some(vec![matrix]));
+
+    assert_eq!(solution.tours.len(), 1);
+    assert_eq!(solution.tours[0].stops.last().unwrap().schedule().arrival, format_time(5.));
+    assert_eq!(solution.unassigned.iter().flatten().count(), 1);
+}
+
+#[test]
+fn can_start_activity_after_break_which_starts_on_arrival() {
+    let is_open = false;
+    let problem = create_problem(
+        vec![create_delivery_job_with_duration("job1", (5., 0.), 3.)],
+        VehicleBreak::Required {
+            id: None,
+            time: VehicleRequiredBreakTime::ExactTime { earliest: format_time(5.), latest: format_time(5.) },
             duration: 2.,
         },
         is_open,
@@ -113,14 +291,14 @@ fn can_assign_break_during_activity() {
                             .schedule_stamp(5., 10.)
                             .load(vec![0])
                             .distance(5)
+                            .activity(ActivityBuilder::break_type().time_stamp(5., 7.).build())
                             .activity(
                                 ActivityBuilder::delivery()
                                     .job_id("job1")
                                     .coordinate((5., 0.))
-                                    .time_stamp(5., 10.)
+                                    .time_stamp(7., 10.)
                                     .build()
                             )
-                            .activity(ActivityBuilder::break_type().time_stamp(7., 9.).build())
                             .build(),
                         StopBuilder::default()
                             .coordinate((0., 0.))

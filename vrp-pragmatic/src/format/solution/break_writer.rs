@@ -119,13 +119,16 @@ fn insert_break(
     };
 
     let activity_time = match &break_insertion {
-        Some(BreakInsertion::TransitBreakMoved { break_tw, leg_idx }) if *leg_idx == stop_idx => {
-            statistic.cost -= break_cost;
-            statistic.times.driving -= break_time;
-            break_tw
-        }
-        _ => reserved_tw,
+        Some(BreakInsertion::TransitBreakMoved { break_tw, leg_idx }) if *leg_idx == stop_idx => break_tw.clone(),
+        _ => get_break_time_before_service(activities, reserved_tw),
     };
+
+    if let Some(BreakInsertion::TransitBreakMoved { leg_idx, .. }) = &break_insertion
+        && *leg_idx == stop_idx
+    {
+        statistic.cost -= break_cost;
+        statistic.times.driving -= break_time;
+    }
 
     activities.insert(
         break_idx,
@@ -140,25 +143,27 @@ fn insert_break(
         },
     );
 
-    activities.iter_mut().enumerate().filter(|(idx, _)| *idx != break_idx).for_each(|(_, activity)| {
-        if let Some(time) = &mut activity.time {
-            let start = parse_time(&time.start);
-            let end = parse_time(&time.end);
-            let overlap = TimeWindow::new(start, end).overlapping(reserved_tw);
-
-            if let Some(overlap) = overlap {
-                let extra_time = reserved_tw.end - overlap.end + overlap.duration();
-                time.end = format_time(end + extra_time);
-            }
-        }
-    });
-
     activities.sort_by(|a, b| match (&a.time, &b.time) {
         (Some(a), Some(b)) => parse_time(&a.start).total_cmp(&parse_time(&b.start)),
         (Some(_), None) => Ordering::Greater,
         (None, Some(_)) => Ordering::Less,
         (None, None) => Ordering::Equal,
     })
+}
+
+/// Gets break time on the stop. As the solver never interrupts service with a required break, the
+/// break is taken at its latest time if it fits before the next service, otherwise right before it.
+fn get_break_time_before_service(activities: &[ApiActivity], reserved_tw: &TimeWindow) -> TimeWindow {
+    activities
+        .iter()
+        .filter(|activity| activity.activity_type != "break")
+        .filter_map(|activity| activity.time.as_ref())
+        .map(|interval| TimeWindow::new(parse_time(&interval.start), parse_time(&interval.end)))
+        .find(|activity_tw| activity_tw.end > reserved_tw.start)
+        .map_or(reserved_tw.clone(), |activity_tw| {
+            let break_end = reserved_tw.end.min(activity_tw.start);
+            TimeWindow::new(break_end - reserved_tw.duration(), break_end)
+        })
 }
 
 #[derive(Clone)]

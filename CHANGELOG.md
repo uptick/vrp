@@ -26,6 +26,8 @@ are already published. So, I stick to it for now.
 * **breaking**: rename `violations` fields in solution to `vehicleId` and `shiftIndex`, matching the
   documented format and the rest of the solution
 * commit `Cargo.lock` to make builds reproducible
+* required breaks no longer interrupt job service: a break is taken either before or after a job activity, never in
+  the middle of it
 
 ### Added
 
