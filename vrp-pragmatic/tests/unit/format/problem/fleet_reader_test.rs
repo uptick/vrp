@@ -38,6 +38,7 @@ fn create_problem(profiles: &[&str]) -> Problem {
                     speed: None,
                     distance_multiplier: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 })
                 .collect(),
             ..create_default_fleet()

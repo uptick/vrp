@@ -166,6 +166,7 @@ mod actual {
                         speed: None,
                         distance_multiplier: None,
                         unknown_location_travel: None,
+                        adjustments: None,
                     })
                     .collect(),
                 resources: None,
