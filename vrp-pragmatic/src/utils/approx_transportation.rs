@@ -10,6 +10,20 @@ use vrp_core::utils::{Float, ParallelismPolicy, parallel_collect};
 /// `(speed, distance_multiplier)`. A leg's distance is its straight line times the multiplier, and
 /// its duration that distance over the speed.
 pub fn get_approx_transportation(locations: &[Location], settings: &[(Float, Float)]) -> Vec<(Vec<i64>, Vec<i64>)> {
+    approximate(locations, settings, |value| value as i64)
+}
+
+/// The same as [`get_approx_transportation`], with the rounded values held as floats, the way
+/// routing costs hold them, so they need no conversion and no second copy.
+pub fn get_approx_travel(locations: &[Location], settings: &[(Float, Float)]) -> Vec<(Vec<Float>, Vec<Float>)> {
+    approximate(locations, settings, |value| value)
+}
+
+fn approximate<T: Send>(
+    locations: &[Location],
+    settings: &[(Float, Float)],
+    to_value: fn(Float) -> T,
+) -> Vec<(Vec<T>, Vec<T>)> {
     assert!(!settings.is_empty());
     assert!(settings.iter().all(|&(speed, distance_multiplier)| speed > 0. && distance_multiplier > 0.));
 
@@ -21,7 +35,7 @@ pub fn get_approx_transportation(locations: &[Location], settings: &[(Float, Flo
     parallel_collect(settings, ParallelismPolicy::Default, |&(speed, distance_multiplier)| {
         let distances = distances.iter().map(|distance| distance * distance_multiplier);
 
-        distances.map(|distance| ((distance / speed).round() as i64, distance.round() as i64)).unzip()
+        distances.map(|distance| (to_value((distance / speed).round()), to_value(distance.round()))).unzip()
     })
 }
 
