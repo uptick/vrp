@@ -1,6 +1,7 @@
 use crate::format::problem::*;
 use crate::helpers::*;
 use std::collections::HashSet;
+use std::io::BufReader;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use vrp_core::construction::features::{JobDemandDimension, JobSkillsDimension, VehicleSkillsDimension};
@@ -298,10 +299,30 @@ fn can_create_approximation_matrices() {
         fleet: Fleet {
             vehicles: vec![],
             profiles: vec![
-                MatrixProfile { name: "car1".to_string(), speed: Some(8.) },
-                MatrixProfile { name: "car2".to_string(), speed: Some(10.) },
-                MatrixProfile { name: "car3".to_string(), speed: Some(5.) },
-                MatrixProfile { name: "car4".to_string(), speed: None },
+                MatrixProfile {
+                    name: "car1".to_string(),
+                    speed: Some(8.),
+                    distance_multiplier: None,
+                    unknown_location_travel: None,
+                },
+                MatrixProfile {
+                    name: "car2".to_string(),
+                    speed: Some(10.),
+                    distance_multiplier: None,
+                    unknown_location_travel: None,
+                },
+                MatrixProfile {
+                    name: "car3".to_string(),
+                    speed: Some(5.),
+                    distance_multiplier: None,
+                    unknown_location_travel: None,
+                },
+                MatrixProfile {
+                    name: "car4".to_string(),
+                    speed: None,
+                    distance_multiplier: None,
+                    unknown_location_travel: None,
+                },
             ],
             ..create_default_fleet()
         },
@@ -320,4 +341,71 @@ fn can_create_approximation_matrices() {
         assert_eq!(matrix.distances, &[0, 5078, 5078, 0]);
         assert_eq!(matrix.travel_times, &[0, duration, duration, 0]);
     }
+}
+
+#[test]
+fn can_create_approximation_matrices_by_speed_and_distance_multiplier() {
+    let profile = |name: &str, speed: Option<f64>, distance_multiplier: Option<f64>| MatrixProfile {
+        name: name.to_string(),
+        speed,
+        distance_multiplier,
+        unknown_location_travel: None,
+    };
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![
+                create_delivery_job("job1", (52.52599, 13.45413)),
+                create_delivery_job("job2", (52.5165, 13.3808)),
+            ],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![],
+            // Same speed, different distance multipliers: each profile gets its own matrix.
+            profiles: vec![
+                profile("car", None, None),
+                profile("walk", None, Some(1.3)),
+                profile("hike", Some(2.), Some(1.3)),
+            ],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+
+    let matrices = create_approx_matrices(&problem);
+
+    // 5078m in a straight line, so 6601m with a distance multiplier of 1.3.
+    for &(name, distance, duration) in &[("car", 5078, 508), ("walk", 6601, 660), ("hike", 6601, 3301)] {
+        let matrix = matrices.iter().find(|m| m.profile.as_deref() == Some(name)).unwrap();
+
+        assert_eq!(matrix.distances, &[0, distance, distance, 0], "{name}");
+        assert_eq!(matrix.travel_times, &[0, duration, duration, 0], "{name}");
+    }
+}
+
+#[test]
+fn can_read_approximation_settings_from_json() {
+    let problem = deserialize_problem(BufReader::new(
+        r#"{
+          "plan": { "jobs": [] },
+          "fleet": {
+            "vehicles": [],
+            "profiles": [
+              { "name": "car" },
+              { "name": "walk", "speed": 1.4, "distanceMultiplier": 1.3, "unknownLocationTravel": { "duration": 86400, "distance": 1000000 } }
+            ]
+          }
+        }"#
+        .as_bytes(),
+    ))
+    .unwrap();
+
+    let walk = &problem.fleet.profiles[1];
+    assert_eq!(walk.distance_multiplier, Some(1.3));
+    assert_eq!(
+        walk.unknown_location_travel.as_ref().map(|travel| (travel.duration, travel.distance)),
+        Some((86400., 1000000.))
+    );
+    assert!(problem.fleet.profiles[0].distance_multiplier.is_none());
+    assert!(problem.fleet.profiles[0].unknown_location_travel.is_none());
 }

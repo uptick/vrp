@@ -6,22 +6,22 @@ use crate::format::{CustomLocationType, Location};
 use vrp_core::models::common::Distance;
 use vrp_core::utils::{Float, ParallelismPolicy, parallel_collect};
 
-/// Gets approximated durations and distances rounded to nearest integer.
-pub fn get_approx_transportation(locations: &[Location], speeds: &[Float]) -> Vec<(Vec<i64>, Vec<i64>)> {
-    assert!(!speeds.is_empty());
-    assert!(speeds.iter().all(|&speed| speed > 0.));
+/// Gets approximated durations and distances rounded to nearest integer, one pair for each
+/// `(speed, distance_multiplier)`. A leg's distance is its straight line times the multiplier, and
+/// its duration that distance over the speed.
+pub fn get_approx_transportation(locations: &[Location], settings: &[(Float, Float)]) -> Vec<(Vec<i64>, Vec<i64>)> {
+    assert!(!settings.is_empty());
+    assert!(settings.iter().all(|&(speed, distance_multiplier)| speed > 0. && distance_multiplier > 0.));
 
     let distances = locations
         .iter()
         .flat_map(|l1| locations.iter().map(move |l2| get_haversine_distance(l1, l2)))
         .collect::<Vec<_>>();
 
-    let distances_rounded = distances.iter().map(|distance| distance.round() as i64).collect::<Vec<_>>();
+    parallel_collect(settings, ParallelismPolicy::Default, |&(speed, distance_multiplier)| {
+        let distances = distances.iter().map(|distance| distance * distance_multiplier);
 
-    parallel_collect(speeds, ParallelismPolicy::Default, |speed| {
-        let durations = distances.iter().map(|distance| (distance / speed).round() as i64).collect::<Vec<_>>();
-
-        (durations, distances_rounded.clone())
+        distances.map(|distance| ((distance / speed).round() as i64, distance.round() as i64)).unzip()
     })
 }
 

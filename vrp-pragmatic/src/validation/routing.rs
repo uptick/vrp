@@ -115,6 +115,42 @@ fn check_e1505_profiles_exist(ctx: &ValidationContext) -> Result<(), FormatError
     }
 }
 
+/// Checks that a profile's approximation settings can be used: a positive, finite speed and distance
+/// multiplier, and a non-negative, finite duration and distance for unknown location travel.
+fn check_e1506_invalid_approximation_settings(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let is_positive = |value: Option<Float>| value.is_none_or(|value| value.is_finite() && value > 0.);
+    let is_non_negative = |value: Float| value.is_finite() && value >= 0.;
+
+    let invalid_profiles = ctx
+        .problem
+        .fleet
+        .profiles
+        .iter()
+        .filter(|profile| {
+            !is_positive(profile.speed)
+                || !is_positive(profile.distance_multiplier)
+                || profile
+                    .unknown_location_travel
+                    .as_ref()
+                    .is_some_and(|travel| !is_non_negative(travel.duration) || !is_non_negative(travel.distance))
+        })
+        .map(|profile| profile.name.as_str())
+        .collect::<Vec<_>>();
+
+    if invalid_profiles.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1506".to_string(),
+            "invalid approximation settings in profile".to_string(),
+            format!(
+                "give profiles '{}' a speed and distance multiplier above zero, and unknown location travel of zero or more",
+                invalid_profiles.join(", ")
+            ),
+        ))
+    }
+}
+
 /// Validates routing rules.
 pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     let location_types = (ctx.coord_index.has_coordinates(), ctx.coord_index.has_indices());
@@ -126,6 +162,7 @@ pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError>
         check_e1503_no_matrix_when_indices_used(ctx, location_types),
         check_e1504_index_size_mismatch(ctx),
         check_e1505_profiles_exist(ctx),
+        check_e1506_invalid_approximation_settings(ctx),
     ])
     .map_err(From::from)
 }

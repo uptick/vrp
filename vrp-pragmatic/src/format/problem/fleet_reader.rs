@@ -88,10 +88,31 @@ pub(super) fn create_transport_costs(
     }
 
     if coord_index.has_custom() {
-        create_matrix_transport_cost_with_fallback(matrix_data, UnknownLocationFallback::new(coord_index))
+        let unknown_location_travel = get_profile_unknown_location_travel(api_problem, &matrix_profiles);
+        create_matrix_transport_cost_with_fallback(
+            matrix_data,
+            UnknownLocationFallback::with_unknown_location_travel(coord_index, unknown_location_travel),
+        )
     } else {
         create_matrix_transport_cost(matrix_data)
     }
+}
+
+/// The travel of a leg with an unknown end, as `(duration, distance)` by profile index.
+fn get_profile_unknown_location_travel(
+    api_problem: &ApiProblem,
+    profile_indices: &HashMap<String, usize>,
+) -> Vec<(Float, Float)> {
+    let mut unknown_location_travel = vec![(0., 0.); profile_indices.len()];
+    api_problem.fleet.profiles.iter().rev().for_each(|profile| {
+        if let (Some(&index), Some(travel)) =
+            (profile_indices.get(&profile.name), profile.unknown_location_travel.as_ref())
+        {
+            unknown_location_travel[index] = (travel.duration, travel.distance);
+        }
+    });
+
+    unknown_location_travel
 }
 
 pub(super) fn read_fleet(
@@ -222,30 +243,38 @@ pub fn create_approx_matrices(problem: &ApiProblem) -> Vec<Matrix> {
 
 pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_index: &CoordIndex) -> Vec<Matrix> {
     const DEFAULT_SPEED: Float = 10.;
-    // get each speed value once
-    let speeds = problem
+    const DEFAULT_DISTANCE_MULTIPLIER: Float = 1.;
+    let get_settings = |profile: &MatrixProfile| {
+        (profile.speed.unwrap_or(DEFAULT_SPEED), profile.distance_multiplier.unwrap_or(DEFAULT_DISTANCE_MULTIPLIER))
+    };
+
+    // get each pair of speed and distance multiplier values once
+    let settings = problem
         .fleet
         .profiles
         .iter()
-        .map(|profile| profile.speed.unwrap_or(DEFAULT_SPEED))
-        .map(|speed| speed.to_bits())
+        .map(get_settings)
+        .map(|(speed, distance_multiplier)| (speed.to_bits(), distance_multiplier.to_bits()))
         .collect::<HashSet<_>>();
-    let speeds = speeds.into_iter().map(Float::from_bits).collect::<Vec<_>>();
+    let settings = settings
+        .into_iter()
+        .map(|(speed, distance_multiplier)| (Float::from_bits(speed), Float::from_bits(distance_multiplier)))
+        .collect::<Vec<_>>();
 
     let locations = coord_index
         .unique()
         .into_iter()
         .filter(|location| !matches!(location, ApiLocation::Custom { .. }))
         .collect::<Vec<_>>();
-    let approx_data = get_approx_transportation(&locations, speeds.as_slice());
+    let approx_data = get_approx_transportation(&locations, settings.as_slice());
 
     problem
         .fleet
         .profiles
         .iter()
         .map(move |profile| {
-            let speed = profile.speed.unwrap_or(DEFAULT_SPEED);
-            let idx = speeds.iter().position(|&s| s == speed).expect("Cannot find profile speed");
+            let profile_settings = get_settings(profile);
+            let idx = settings.iter().position(|&s| s == profile_settings).expect("Cannot find profile settings");
 
             Matrix {
                 profile: Some(profile.name.clone()),

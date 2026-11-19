@@ -47,6 +47,9 @@ are already published. So, I stick to it for now.
 * add `validate_pragmatic` to the python binding
 * add a javascript/node example
 * add `E0005`, `E1305` and `E1309` errors
+* add approximation settings to a routing profile: `distanceMultiplier` stretches an approximated leg's straight line,
+  and `unknownLocationTravel` sets the travel of a leg to, from or between unknown locations, which was always zero.
+  Adds the `E1506` error for a speed or distance multiplier not above zero, or negative unknown location travel
 
 ### Fixed
 
