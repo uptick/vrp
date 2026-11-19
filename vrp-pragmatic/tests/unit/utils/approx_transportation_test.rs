@@ -26,7 +26,7 @@ fn can_use_approximated_with_matrix_costs() {
     let profile = Profile::default();
     let locations = get_test_locations();
     let speed = 10.;
-    let approx_data = get_approx_transportation(&locations, &[speed]);
+    let approx_data = get_approx_transportation(&locations, &[(speed, 1.)]);
     assert_eq!(approx_data.len(), 1);
 
     let (durations, distances) = approx_data.first().unwrap();
@@ -43,4 +43,24 @@ fn can_use_approximated_with_matrix_costs() {
         assert_eq!(distance.round(), expected);
         assert_eq!(duration.round(), (distance / speed).round());
     });
+}
+
+#[test]
+fn can_stretch_approximated_legs_by_distance_multiplier() {
+    let locations = get_test_locations();
+    let approx_data = get_approx_transportation(&locations, &[(10., 1.), (2., 1.3)]);
+    assert_eq!(approx_data.len(), 2);
+
+    for (from, to) in [(0, 1), (1, 2), (2, 0)] {
+        let straight_line = get_haversine_distance(&locations[from], &locations[to]);
+        let cell = from * locations.len() + to;
+
+        let (durations, distances) = &approx_data[0];
+        assert_eq!(distances[cell], straight_line.round() as i64);
+        assert_eq!(durations[cell], (straight_line / 10.).round() as i64);
+
+        let (durations, distances) = &approx_data[1];
+        assert_eq!(distances[cell], (straight_line * 1.3).round() as i64);
+        assert_eq!(durations[cell], (straight_line * 1.3 / 2.).round() as i64);
+    }
 }

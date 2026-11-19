@@ -159,7 +159,15 @@ mod actual {
             plan: Plan { jobs, relations: None, clustering: None },
             fleet: Fleet {
                 vehicles,
-                profiles: matrix_profile_names.into_iter().map(|name| MatrixProfile { name, speed: None }).collect(),
+                profiles: matrix_profile_names
+                    .into_iter()
+                    .map(|name| MatrixProfile {
+                        name,
+                        speed: None,
+                        distance_multiplier: None,
+                        unknown_location_travel: None,
+                    })
+                    .collect(),
                 resources: None,
             },
             objectives: None,
