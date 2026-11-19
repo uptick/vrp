@@ -57,6 +57,7 @@ impl CheckerContext {
         let job_map = problem.plan.jobs.iter().map(|job| (job.id.clone(), job.clone())).collect();
         let clustering = core_problem.extras.get_cluster_config().map(|config| config.as_ref().clone());
         let coord_index = CoordIndex::new(&problem);
+        let matrices = matrices.map(|matrices| with_location_table_approximation(&problem, matrices));
         let profile_index = if matrices.is_none() {
             HashMap::new()
         } else {
@@ -428,6 +429,24 @@ fn get_matrices(matrices: &Option<Vec<Matrix>>) -> GenericResult<&Vec<Matrix>> {
     }
 
     Ok(matrices)
+}
+
+/// With a location table, a profile with no routing matrix was approximated from the table: check
+/// against the same travel, with the matrices in profile order.
+fn with_location_table_approximation(problem: &Problem, matrices: Vec<Matrix>) -> Vec<Matrix> {
+    if problem.locations.is_none() {
+        return matrices;
+    }
+
+    let mut matrices = add_approx_matrices_from_location_table(problem, matrices);
+    matrices.sort_by_key(|matrix| {
+        matrix
+            .profile
+            .as_ref()
+            .and_then(|name| problem.fleet.profiles.iter().position(|profile| &profile.name == name))
+            .unwrap_or(usize::MAX)
+    });
+    matrices
 }
 
 fn get_profile_index(problem: &Problem, matrices: &[Matrix]) -> GenericResult<HashMap<String, usize>> {

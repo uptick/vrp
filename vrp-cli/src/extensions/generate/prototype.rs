@@ -27,5 +27,6 @@ pub(crate) fn generate_from_prototype(
         plan: generate_plan(problem, locations, jobs_size, area_size)?,
         fleet: generate_fleet(problem, vehicle_types_size),
         objectives: problem.objectives.clone(),
+        locations: None,
     })
 }

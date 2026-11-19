@@ -20,6 +20,7 @@ fn can_get_locations_serialized() {
         plan: Plan { jobs: vec![create_test_job(1., 1.), create_test_job(1., 0.)], ..create_empty_plan() },
         fleet: Fleet { vehicles: vec![create_test_vehicle_type()], profiles: vec![], resources: None },
         objectives: None,
+        locations: None,
     };
 
     let locations = get_locations_serialized(&problem).unwrap().replace([' ', '\n'], "");
@@ -37,6 +38,7 @@ fn can_get_solution_serialized() {
             resources: None,
         },
         objectives: None,
+        locations: None,
     };
     let problem = Arc::new(problem.read_pragmatic().unwrap());
 
@@ -182,4 +184,22 @@ fn can_serialize_errors_as_json() {
     assert!(json.contains("E0000"));
     assert!(json.contains("cause"));
     assert!(json.contains("action"));
+}
+
+#[test]
+fn can_solve_indexed_locations_with_location_table() {
+    let mut problem: serde_json::Value = serde_json::from_str(SIMPLE_PROBLEM).unwrap();
+    let job_location = &mut problem["plan"]["jobs"][0]["deliveries"][0]["places"][0]["location"];
+    let job_coordinate = job_location.clone();
+    *job_location = serde_json::json!({ "index": 0 });
+    problem["fleet"]["vehicles"][0]["shifts"][0]["start"]["location"] = serde_json::json!({ "index": 1 });
+    // The depot has no known coordinates, so travel to and from it approximates to zero.
+    problem["locations"] = serde_json::json!([job_coordinate, null]);
+    let problem = problem.to_string();
+
+    let solution = solve(&problem, &[], ONE_GENERATION_CONFIG).unwrap().replace([' ', '\n'], "");
+
+    assert!(solution.contains(r#""statistic":{"cost":"#), "{solution}");
+    assert!(solution.contains(r#""distance":0,"#), "{solution}");
+    assert!(!solution.contains("unassigned"), "{solution}");
 }

@@ -283,6 +283,7 @@ pub fn create_empty_problem() -> Problem {
         plan: create_empty_plan(),
         fleet: Fleet { vehicles: vec![], profiles: vec![], resources: None },
         objectives: None,
+        locations: None,
     }
 }
 

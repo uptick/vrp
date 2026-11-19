@@ -52,12 +52,13 @@ fn check_e1503_no_matrix_when_indices_used(
     location_types: (bool, bool),
 ) -> Result<(), FormatError> {
     let (_, has_indices) = location_types;
+    let has_location_table = ctx.problem.locations.is_some();
 
-    if has_indices && ctx.matrices.is_none_or(|matrices| matrices.is_empty()) {
+    if has_indices && !has_location_table && ctx.matrices.is_none_or(|matrices| matrices.is_empty()) {
         Err(FormatError::new(
             "E1503".to_string(),
             "location indices requires routing matrix to be specified".to_string(),
-            "either use coordinates everywhere or specify routing matrix".to_string(),
+            "either use coordinates everywhere, specify routing matrix or specify a location table".to_string(),
         ))
     } else {
         Ok(())
@@ -68,10 +69,12 @@ fn check_e1503_no_matrix_when_indices_used(
 fn check_e1504_index_size_mismatch(ctx: &ValidationContext) -> Result<(), FormatError> {
     let max_index = ctx.coord_index.max_matrix_index();
 
+    // A profile with no routing matrix is approximated from the location table, at its size.
     let (matrix_size, is_correct_index) = ctx
         .matrices
         .and_then(|matrices| matrices.first())
-        .map(|matrix| (matrix.distances.len() as Float).sqrt().round() as usize)
+        .map(get_matrix_size)
+        .or_else(|| ctx.problem.locations.as_ref().map(|table| table.len()))
         .map_or((0_usize, true), |matrix_size| (matrix_size, max_index + 1 == matrix_size));
 
     if !is_correct_index {
@@ -115,6 +118,73 @@ fn check_e1505_profiles_exist(ctx: &ValidationContext) -> Result<(), FormatError
     }
 }
 
+/// Checks that a location table is used with location indices only: it gives the coordinates of
+/// each index, so a coordinate location would have no place in it.
+fn check_e1506_location_table_with_coordinates(
+    ctx: &ValidationContext,
+    location_types: (bool, bool),
+) -> Result<(), FormatError> {
+    let (has_coordinates, _) = location_types;
+
+    if ctx.problem.locations.is_some() && has_coordinates {
+        Err(FormatError::new(
+            "E1506".to_string(),
+            "location table used with coordinate locations".to_string(),
+            "refer to every location by its index in the location table".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Checks that every routing matrix has one row per location in the location table.
+fn check_e1507_matrix_size_differs_from_location_table(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let Some(table_size) = ctx.problem.locations.as_ref().map(|table| table.len()) else {
+        return Ok(());
+    };
+
+    let mismatched = ctx
+        .matrices
+        .iter()
+        .flat_map(|matrices| matrices.iter())
+        .map(get_matrix_size)
+        .filter(|&matrix_size| matrix_size != table_size)
+        .collect::<HashSet<_>>();
+
+    if mismatched.is_empty() {
+        Ok(())
+    } else {
+        let mut sizes = mismatched.into_iter().collect::<Vec<_>>();
+        sizes.sort_unstable();
+        let sizes = sizes.iter().map(|size| size.to_string()).collect::<Vec<_>>().join(", ");
+        Err(FormatError::new(
+            "E1507".to_string(),
+            "routing matrix size does not match location table".to_string(),
+            format!("give every matrix as many locations as the location table ('{table_size}'), not '{sizes}'"),
+        ))
+    }
+}
+
+/// Checks that every routing matrix names its profile when there is a location table: a profile
+/// with no matrix is approximated, so matrices cannot be paired with profiles by position.
+fn check_e1508_unnamed_matrix_with_location_table(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let has_unnamed_matrix = ctx.matrices.is_some_and(|matrices| matrices.iter().any(|m| m.profile.is_none()));
+
+    if ctx.problem.locations.is_some() && has_unnamed_matrix {
+        Err(FormatError::new(
+            "E1508".to_string(),
+            "routing matrix without a profile alongside a location table".to_string(),
+            "set the profile of every routing matrix".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn get_matrix_size(matrix: &Matrix) -> usize {
+    (matrix.distances.len() as Float).sqrt().round() as usize
+}
+
 /// Validates routing rules.
 pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     let location_types = (ctx.coord_index.has_coordinates(), ctx.coord_index.has_indices());
@@ -126,6 +196,9 @@ pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError>
         check_e1503_no_matrix_when_indices_used(ctx, location_types),
         check_e1504_index_size_mismatch(ctx),
         check_e1505_profiles_exist(ctx),
+        check_e1506_location_table_with_coordinates(ctx, location_types),
+        check_e1507_matrix_size_differs_from_location_table(ctx),
+        check_e1508_unnamed_matrix_with_location_table(ctx),
     ])
     .map_err(From::from)
 }

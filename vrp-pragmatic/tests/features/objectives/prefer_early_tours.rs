@@ -51,6 +51,7 @@ fn create_problem(objectives: Option<Vec<Objective>>, out_of_hours_travel: bool)
             ..create_default_fleet()
         },
         objectives,
+        locations: None,
     }
 }
 

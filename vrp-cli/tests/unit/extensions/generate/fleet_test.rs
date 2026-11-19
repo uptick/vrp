@@ -12,6 +12,7 @@ fn can_generate_fleet_of_specific_size() {
             resources: None,
         },
         objectives: None,
+        locations: None,
     };
 
     let generated = generate_fleet(&prototype, 2);

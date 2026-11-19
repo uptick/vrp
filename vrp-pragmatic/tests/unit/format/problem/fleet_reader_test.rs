@@ -1,4 +1,4 @@
-use super::create_transport_costs;
+use super::{add_approx_matrices_from_location_table, create_transport_costs};
 use crate::format::problem::*;
 use crate::format_time;
 use crate::helpers::*;
@@ -172,4 +172,47 @@ fn can_create_transport_costs_positive_cases_impl(
         let result = transport.distance(&route, 0, 1, TravelTime::Departure(timestamp));
         assert_eq!(result, distance);
     });
+}
+
+#[test]
+fn can_approximate_profiles_without_matrix_from_location_table() {
+    let (lat, lng) = (52.52, 13.405);
+    let problem = Problem {
+        fleet: Fleet {
+            profiles: vec![
+                MatrixProfile { name: "car".to_string(), speed: None },
+                MatrixProfile { name: "walk".to_string(), speed: Some(2.) },
+            ],
+            ..create_default_fleet()
+        },
+        locations: Some(vec![Some(GeoCoordinate { lat, lng }), None, Some(GeoCoordinate { lat: lat + 0.01, lng })]),
+        ..create_empty_problem()
+    };
+    let car = matrix(Some("car"), None, 7, 9);
+    let expected = crate::utils::get_approx_transportation(
+        &[Location::Coordinate { lat, lng }, Location::Coordinate { lat: lat + 0.01, lng }],
+        &[2.],
+    );
+    let (expected_duration, expected_distance) = (expected[0].0[1], expected[0].1[1]);
+
+    let matrices = add_approx_matrices_from_location_table(&problem, vec![car]);
+
+    assert_eq!(matrices.len(), 2);
+    assert_eq!(matrices[0].profile.as_deref(), Some("car"));
+    assert_eq!(matrices[0].travel_times, vec![7; 9]);
+    assert_eq!(matrices[1].profile.as_deref(), Some("walk"));
+    // Legs to and from the location with no coordinates (index 1) are zero.
+    assert_eq!(matrices[1].travel_times, vec![0, 0, expected_duration, 0, 0, 0, expected_duration, 0, 0]);
+    assert_eq!(matrices[1].distances, vec![0, 0, expected_distance, 0, 0, 0, expected_distance, 0, 0]);
+    assert!(expected_distance > 0);
+}
+
+#[test]
+fn can_keep_matrices_without_location_table() {
+    let problem = create_problem(&["car", "truck"]);
+    let matrices = vec![matrix(Some("car"), None, 7, 4)];
+
+    let matrices = add_approx_matrices_from_location_table(&problem, matrices);
+
+    assert_eq!(matrices.len(), 1);
 }

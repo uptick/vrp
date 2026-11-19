@@ -544,10 +544,20 @@ pub struct MatrixProfile {
     /// Profile name.
     pub name: String,
 
-    /// Approximation speed (meters per second). Used only when routing matrix is not specified.
+    /// Approximation speed (meters per second). Used only when the profile has no routing matrix.
     /// Default value is 10.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<Float>,
+}
+
+/// The coordinates of a location in the problem's location table.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct GeoCoordinate {
+    /// Latitude.
+    pub lat: f64,
+    /// Longitude.
+    pub lng: f64,
 }
 
 /// Specifies vehicle resource type.
@@ -732,6 +742,15 @@ pub struct Problem {
     /// Specifies objective functions in lexicographical order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objectives: Option<Vec<Objective>>,
+
+    /// A location table: the coordinates of each location index, or `null` for a location with
+    /// no known coordinates. Every location in the problem must then be an index reference.
+    ///
+    /// With a location table, each profile is routed by its own matrix when one is given, and
+    /// approximated from the table when not, so profiles can mix the two. A leg with an unknown
+    /// end approximates to zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locations: Option<Vec<Option<GeoCoordinate>>>,
 }
 
 /// A routing matrix.

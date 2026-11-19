@@ -21,6 +21,7 @@ mod reader_test;
 mod clustering_reader;
 
 mod fleet_reader;
+pub(crate) use self::fleet_reader::add_approx_matrices_from_location_table;
 pub use self::fleet_reader::create_approx_matrices;
 
 mod goal_reader;

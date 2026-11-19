@@ -178,6 +178,7 @@ fn can_read_complex_problem() {
             ..create_default_fleet()
         },
         objectives: None,
+        locations: None,
     };
     let matrix = Matrix {
         profile: Some("car".to_owned()),

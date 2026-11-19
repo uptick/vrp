@@ -4,7 +4,7 @@ mod fleet_reader_test;
 
 use super::*;
 use crate::Location as ApiLocation;
-use crate::format::UnknownLocationFallback;
+use crate::format::{CustomLocationType, UnknownLocationFallback};
 use crate::utils::get_approx_transportation;
 use std::collections::HashSet;
 use vrp_core::construction::enablers::{FirstJobArrivalFloorDimension, create_typed_actor_groups};
@@ -221,27 +221,56 @@ pub fn create_approx_matrices(problem: &ApiProblem) -> Vec<Matrix> {
 }
 
 pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_index: &CoordIndex) -> Vec<Matrix> {
+    let locations = coord_index
+        .unique()
+        .into_iter()
+        .filter(|location| !matches!(location, ApiLocation::Custom { .. }))
+        .collect::<Vec<_>>();
+    let profiles = problem.fleet.profiles.iter().collect::<Vec<_>>();
+
+    create_approx_matrices_for_profiles(&locations, &profiles)
+}
+
+/// Adds an approximated matrix, worked out from the problem's location table, for each profile
+/// which has no routing matrix. Returns the matrices unchanged when there is no location table.
+pub(crate) fn add_approx_matrices_from_location_table(problem: &ApiProblem, mut matrices: Vec<Matrix>) -> Vec<Matrix> {
+    let Some(table) = problem.locations.as_ref() else {
+        return matrices;
+    };
+
+    let routed = matrices.iter().filter_map(|matrix| matrix.profile.as_ref()).collect::<HashSet<_>>();
+    let unrouted = problem.fleet.profiles.iter().filter(|profile| !routed.contains(&profile.name)).collect::<Vec<_>>();
+    if unrouted.is_empty() {
+        return matrices;
+    }
+
+    // A location with no known coordinates approximates to zero, as an unknown location does.
+    let locations = table
+        .iter()
+        .map(|entry| match entry {
+            Some(GeoCoordinate { lat, lng }) => ApiLocation::Coordinate { lat: *lat, lng: *lng },
+            None => ApiLocation::Custom { r#type: CustomLocationType::Unknown },
+        })
+        .collect::<Vec<_>>();
+
+    let approximated = create_approx_matrices_for_profiles(&locations, &unrouted);
+    matrices.extend(approximated);
+    matrices
+}
+
+fn create_approx_matrices_for_profiles(locations: &[ApiLocation], profiles: &[&MatrixProfile]) -> Vec<Matrix> {
     const DEFAULT_SPEED: Float = 10.;
     // get each speed value once
-    let speeds = problem
-        .fleet
-        .profiles
+    let speeds = profiles
         .iter()
         .map(|profile| profile.speed.unwrap_or(DEFAULT_SPEED))
         .map(|speed| speed.to_bits())
         .collect::<HashSet<_>>();
     let speeds = speeds.into_iter().map(Float::from_bits).collect::<Vec<_>>();
 
-    let locations = coord_index
-        .unique()
-        .into_iter()
-        .filter(|location| !matches!(location, ApiLocation::Custom { .. }))
-        .collect::<Vec<_>>();
-    let approx_data = get_approx_transportation(&locations, speeds.as_slice());
+    let approx_data = get_approx_transportation(locations, speeds.as_slice());
 
-    problem
-        .fleet
-        .profiles
+    profiles
         .iter()
         .map(move |profile| {
             let speed = profile.speed.unwrap_or(DEFAULT_SPEED);

@@ -118,6 +118,7 @@ fn can_handle_waiting_time_with_parking_impl(
             ..create_default_fleet()
         },
         objectives: None,
+        locations: None,
     };
 
     let matrices = create_approx_matrices(&problem);

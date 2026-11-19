@@ -163,6 +163,7 @@ mod actual {
                 resources: None,
             },
             objectives: None,
+            locations: None,
         })
     }
 }

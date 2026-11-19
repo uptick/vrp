@@ -47,6 +47,9 @@ are already published. So, I stick to it for now.
 * add `validate_pragmatic` to the python binding
 * add a javascript/node example
 * add `E0005`, `E1305` and `E1309` errors
+* add an optional location table, `locations` at the top of the problem: the coordinates of each location index, or `null` when
+  unknown. With it, a profile with a routing matrix uses the matrix and a profile without one is approximated from
+  the table, so one problem can mix the two. Adds `E1506`, `E1507` and `E1508` errors
 
 ### Fixed
 

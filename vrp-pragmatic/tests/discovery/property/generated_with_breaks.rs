@@ -91,7 +91,7 @@ mod optional {
             generate_vehicles(get_vehicle_type_with_optional_breaks(), 1..4),
             default_matrix_profiles())
         ) -> Problem {
-            Problem { plan, fleet, objectives: None }
+            Problem { plan, fleet, objectives: None, locations: None }
         }
     }
 
@@ -175,7 +175,7 @@ mod required {
             generate_vehicles(get_vehicle_type_with_required_breaks(), 1..4),
             default_matrix_profiles())
         ) -> Problem {
-            Problem { plan, fleet, objectives: None }
+            Problem { plan, fleet, objectives: None, locations: None }
         }
     }
 }

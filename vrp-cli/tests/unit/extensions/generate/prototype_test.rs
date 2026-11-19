@@ -20,6 +20,7 @@ fn can_generate_jobs_with_time_windows() {
             resources: None,
         },
         objectives: None,
+        locations: None,
     };
 
     let result =

@@ -77,6 +77,7 @@ prop_compose! {
             plan,
             fleet,
             objectives: None,
+            locations: None,
         }
     }
 }

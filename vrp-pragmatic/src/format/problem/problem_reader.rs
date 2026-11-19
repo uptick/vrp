@@ -13,8 +13,12 @@ use vrp_core::solver::processing::{ClusterConfigExtraProperty, ReservedTimesExtr
 
 pub(super) fn map_to_problem_with_approx(problem: ApiProblem) -> Result<CoreProblem, MultiFormatError> {
     let coord_index = CoordIndex::new(&problem);
-    let matrices =
-        if coord_index.has_indices() { vec![] } else { create_approx_matrices_with_index(&problem, &coord_index) };
+    // With a location table, every profile is approximated from it in `map_to_problem`.
+    let matrices = if coord_index.has_indices() || problem.locations.is_some() {
+        vec![]
+    } else {
+        create_approx_matrices_with_index(&problem, &coord_index)
+    };
     map_to_problem(problem, matrices, coord_index)
 }
 
@@ -32,6 +36,8 @@ pub(super) fn map_to_problem(
     coord_index: CoordIndex,
 ) -> Result<CoreProblem, MultiFormatError> {
     ValidationContext::new(&api_problem, Some(&matrices), &coord_index).validate()?;
+
+    let matrices = add_approx_matrices_from_location_table(&api_problem, matrices);
 
     let mut extras = Extras::default();
 
