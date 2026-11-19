@@ -50,6 +50,9 @@ are already published. So, I stick to it for now.
 * add approximation settings to a routing profile: `distanceMultiplier` stretches an approximated leg's straight line,
   and `unknownLocationTravel` sets the travel of a leg to, from or between unknown locations, which was always zero.
   Adds the `E1506` error for a speed or distance multiplier not above zero, or negative unknown location travel
+* add travel adjustments to a routing profile, applied whether it has a routing matrix or is approximated: a `minimum`
+  leg duration, and `arrivals` rules which add a `buffer` to, or round up to a multiple (`roundUpTo`), every leg
+  arriving at a location. Adds the `E1507` and `E1508` errors
 
 ### Fixed
 

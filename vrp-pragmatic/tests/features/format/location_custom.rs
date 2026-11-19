@@ -93,6 +93,7 @@ fn can_use_profile_unknown_location_travel_for_unknown_location() {
                 speed: None,
                 distance_multiplier: None,
                 unknown_location_travel: Some(UnknownLocationTravel { duration: 3., distance: 3. }),
+                adjustments: None,
             }],
             ..create_default_fleet()
         },

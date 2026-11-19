@@ -272,6 +272,7 @@ pub fn create_default_matrix_profiles() -> Vec<MatrixProfile> {
         speed: None,
         distance_multiplier: None,
         unknown_location_travel: None,
+        adjustments: None,
     }]
 }
 

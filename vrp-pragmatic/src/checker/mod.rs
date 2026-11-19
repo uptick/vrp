@@ -7,7 +7,7 @@ mod checker_test;
 
 use crate::format::problem::*;
 use crate::format::solution::*;
-use crate::format::{CoordIndex, Location};
+use crate::format::{CoordIndex, Location, ProfileAdjustments, create_profile_adjustments};
 use crate::parse_time;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -32,6 +32,7 @@ pub struct CheckerContext {
     job_map: HashMap<String, Job>,
     coord_index: CoordIndex,
     profile_index: HashMap<String, usize>,
+    adjustments: Vec<Option<ProfileAdjustments>>,
     core_problem: Arc<CoreProblem>,
     clustering: Option<ClusterConfig>,
 }
@@ -65,7 +66,19 @@ impl CheckerContext {
                 .map_err(|err| vec![err])?
         };
 
-        Ok(Self { problem, matrices, solution, job_map, coord_index, profile_index, core_problem, clustering })
+        let adjustments = create_profile_adjustments(&problem, &coord_index, &profile_index);
+
+        Ok(Self {
+            problem,
+            matrices,
+            solution,
+            job_map,
+            coord_index,
+            profile_index,
+            adjustments,
+            core_problem,
+            clustering,
+        })
     }
 
     /// Performs solution check.
@@ -377,8 +390,13 @@ impl CheckerContext {
         let matrix_idx = from_idx * matrix_size + to_idx;
 
         let distance = get_matrix_value(matrix_idx, &matrix.distances)?;
-        let duration = get_matrix_value(matrix_idx, &matrix.travel_times)?;
-        let duration = (duration as Float * profile.scale) as i64;
+        let duration = get_matrix_value(matrix_idx, &matrix.travel_times)? as Float;
+        // The profile's travel adjustments, as the solver applied them when it read the matrix.
+        let duration = match self.adjustments.get(profile.index) {
+            Some(Some(adjustments)) => adjustments.apply(from_idx, to_idx, duration),
+            _ => duration,
+        };
+        let duration = (duration * profile.scale) as i64;
 
         Ok((distance, duration))
     }

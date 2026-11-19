@@ -38,6 +38,7 @@ fn can_get_solution_serialized() {
                 speed: None,
                 distance_multiplier: None,
                 unknown_location_travel: None,
+                adjustments: None,
             }],
             resources: None,
         },
