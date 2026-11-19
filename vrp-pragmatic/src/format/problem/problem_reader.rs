@@ -13,9 +13,10 @@ use vrp_core::solver::processing::{ClusterConfigExtraProperty, ReservedTimesExtr
 
 pub(super) fn map_to_problem_with_approx(problem: ApiProblem) -> Result<CoreProblem, MultiFormatError> {
     let coord_index = CoordIndex::new(&problem);
-    let matrices =
-        if coord_index.has_indices() { vec![] } else { create_approx_matrices_with_index(&problem, &coord_index) };
-    map_to_problem(problem, matrices, coord_index)
+    // Approximated travel goes straight into the routing costs; with location indices there is
+    // nothing to approximate from, which validation reports.
+    let approximate = !coord_index.has_indices();
+    map_to_problem(problem, vec![], coord_index, approximate)
 }
 
 pub(super) fn map_to_problem_with_matrices(
@@ -23,13 +24,14 @@ pub(super) fn map_to_problem_with_matrices(
     matrices: Vec<Matrix>,
 ) -> Result<CoreProblem, MultiFormatError> {
     let coord_index = CoordIndex::new(&problem);
-    map_to_problem(problem, matrices, coord_index)
+    map_to_problem(problem, matrices, coord_index, false)
 }
 
 pub(super) fn map_to_problem(
     api_problem: ApiProblem,
     matrices: Vec<Matrix>,
     coord_index: CoordIndex,
+    approximate: bool,
 ) -> Result<CoreProblem, MultiFormatError> {
     ValidationContext::new(&api_problem, Some(&matrices), &coord_index).validate()?;
 
@@ -41,7 +43,7 @@ pub(super) fn map_to_problem(
     let mut job_index = JobIndex::default();
 
     let props = get_problem_properties(&api_problem, &matrices);
-    let mut blocks = get_problem_blocks(&api_problem, matrices, coord_index, &mut job_index, &props)?;
+    let mut blocks = get_problem_blocks(&api_problem, matrices, approximate, coord_index, &mut job_index, &props)?;
 
     let job_index = Arc::new(job_index);
     extras.set_job_index(job_index.clone());
@@ -176,6 +178,7 @@ fn get_problem_properties(api_problem: &ApiProblem, matrices: &[Matrix]) -> Prob
 fn get_problem_blocks(
     api_problem: &ApiProblem,
     matrices: Vec<Matrix>,
+    approximate: bool,
     coord_index: Arc<CoordIndex>,
     job_index: &mut JobIndex,
     problem_props: &ProblemProperties,
@@ -188,7 +191,7 @@ fn get_problem_blocks(
 
     let transport = Timer::measure_duration_with_callback(
         || {
-            create_transport_costs(api_problem, &matrices, coord_index.clone()).map_err(|err| {
+            create_transport_costs(api_problem, &matrices, coord_index.clone(), approximate).map_err(|err| {
                 vec![FormatError::new(
                     "E0002".to_string(),
                     "cannot create transport costs".to_string(),

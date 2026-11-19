@@ -1,4 +1,6 @@
-use super::create_transport_costs;
+use super::{
+    create_approx_matrices_with_index, create_approx_matrix_data, create_transport_costs, get_profile_index_map,
+};
 use crate::format::problem::*;
 use crate::format_time;
 use crate::helpers::*;
@@ -108,7 +110,7 @@ fn can_create_transport_costs_negative_cases_impl(profiles: &[&str], matrices: &
     let problem = create_problem(profiles);
     let coord_index = Arc::new(CoordIndex::new(&problem));
 
-    let result = create_transport_costs(&problem, matrices, coord_index);
+    let result = create_transport_costs(&problem, matrices, coord_index, false);
 
     assert_eq!(result.err(), Some(res_err.into()));
 }
@@ -166,7 +168,7 @@ fn can_create_transport_costs_positive_cases_impl(
     let problem = create_problem(profiles);
     let coord_index = Arc::new(CoordIndex::new(&problem));
 
-    let transport = create_transport_costs(&problem, matrices, coord_index).unwrap();
+    let transport = create_transport_costs(&problem, matrices, coord_index, false).unwrap();
 
     probes.iter().for_each(|&(profile_idx, timestamp, distance)| {
         let route = Route {
@@ -181,4 +183,49 @@ fn can_create_transport_costs_positive_cases_impl(
         let result = transport.distance(&route, 0, 1, TravelTime::Departure(timestamp));
         assert_eq!(result, distance);
     });
+}
+
+#[test]
+fn can_approximate_into_matrix_data_as_into_matrices() {
+    let profile = |name: &str, speed: Option<Float>, distance_multiplier: Option<Float>| MatrixProfile {
+        name: name.to_string(),
+        speed,
+        distance_multiplier,
+        unknown_location_travel: None,
+        adjustments: None,
+    };
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![
+                create_delivery_job("job1", (52.52599, 13.45413)),
+                create_delivery_job("job2", (52.5225, 13.4095)),
+                create_delivery_job("job3", (52.5165, 13.3808)),
+            ],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![],
+            // "van" shares "car"'s settings, so the two share one approximation.
+            profiles: vec![
+                profile("car", Some(16.67), None),
+                profile("walk", Some(1.4), Some(1.3)),
+                profile("van", Some(16.67), None),
+            ],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+    let coord_index = CoordIndex::new(&problem);
+    let profile_indices = get_profile_index_map(&problem);
+
+    let matrices = create_approx_matrices_with_index(&problem, &coord_index);
+    let matrix_data = create_approx_matrix_data(&problem, &coord_index, &profile_indices);
+
+    assert_eq!(matrix_data.len(), 3);
+    for data in matrix_data {
+        let matrix = &matrices[data.index];
+        assert!(data.timestamp.is_none());
+        assert_eq!(data.durations, matrix.travel_times.iter().map(|&value| value as Float).collect::<Vec<_>>());
+        assert_eq!(data.distances, matrix.distances.iter().map(|&value| value as Float).collect::<Vec<_>>());
+    }
 }
