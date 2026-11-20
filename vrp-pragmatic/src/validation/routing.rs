@@ -115,6 +115,44 @@ fn check_e1505_profiles_exist(ctx: &ValidationContext) -> Result<(), FormatError
     }
 }
 
+/// Checks that profile approximation tables are well formed.
+fn check_e1506_approximation_tables(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let is_valid_table = |table: &[[Float; 2]]| {
+        !table.is_empty()
+            && table.iter().all(|[x, y]| x.is_finite() && y.is_finite() && *x > 0. && *y > 0.)
+            && table.windows(2).all(|pair| pair[0][0] < pair[1][0] && pair[0][1] < pair[1][1])
+    };
+
+    let invalid_profiles = ctx
+        .problem
+        .fleet
+        .profiles
+        .iter()
+        .filter(|profile| {
+            profile.approximation.as_ref().is_some_and(|approximation| {
+                profile.speed.is_some()
+                    || !is_valid_table(&approximation.durations)
+                    || approximation.distances.as_ref().is_some_and(|distances| !is_valid_table(distances))
+            })
+        })
+        .map(|profile| profile.name.clone())
+        .collect::<Vec<_>>();
+
+    if invalid_profiles.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1506".to_string(),
+            "invalid approximation in matrix profile".to_string(),
+            format!(
+                "for profiles '{}': remove speed when approximation is set, and give each table at least one \
+                 knot, with positive values strictly increasing in both straight-line meters and value",
+                invalid_profiles.join(", ")
+            ),
+        ))
+    }
+}
+
 /// Validates routing rules.
 pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     let location_types = (ctx.coord_index.has_coordinates(), ctx.coord_index.has_indices());
@@ -126,6 +164,7 @@ pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError>
         check_e1503_no_matrix_when_indices_used(ctx, location_types),
         check_e1504_index_size_mismatch(ctx),
         check_e1505_profiles_exist(ctx),
+        check_e1506_approximation_tables(ctx),
     ])
     .map_err(From::from)
 }

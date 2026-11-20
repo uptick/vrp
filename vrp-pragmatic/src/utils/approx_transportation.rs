@@ -6,10 +6,62 @@ use crate::format::{CustomLocationType, Location};
 use vrp_core::models::common::Distance;
 use vrp_core::utils::{Float, ParallelismPolicy, parallel_collect};
 
-/// Gets approximated durations and distances rounded to nearest integer.
-pub fn get_approx_transportation(locations: &[Location], speeds: &[Float]) -> Vec<(Vec<i64>, Vec<i64>)> {
-    assert!(!speeds.is_empty());
-    assert!(speeds.iter().all(|&speed| speed > 0.));
+/// How travel is worked out from the straight-line distance between two locations.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Approximation {
+    /// The straight line covered at a speed (meters per second).
+    Speed(Float),
+    /// Tables of `[straight-line meters, value]` knots, read as `interpolate` does.
+    Tables {
+        /// Duration in seconds.
+        durations: Vec<[Float; 2]>,
+        /// Road distance in meters. The straight line itself when absent.
+        distances: Option<Vec<[Float; 2]>>,
+    },
+}
+
+impl Approximation {
+    /// A key equal for two approximations exactly when they work travel out the same way.
+    pub(crate) fn key(&self) -> Vec<u64> {
+        match self {
+            Approximation::Speed(speed) => vec![0, speed.to_bits()],
+            Approximation::Tables { durations, distances } => {
+                let mut key = vec![1];
+                std::iter::once(durations).chain(distances).for_each(|table| {
+                    key.push(table.len() as u64);
+                    key.extend(table.iter().flat_map(|knot| knot.map(Float::to_bits)));
+                });
+                key
+            }
+        }
+    }
+
+    fn duration(&self, distance: Float) -> Float {
+        match self {
+            Approximation::Speed(speed) => distance / speed,
+            Approximation::Tables { durations, .. } => interpolate(durations, distance),
+        }
+    }
+
+    fn distance(&self, distance: Float) -> Float {
+        match self {
+            Approximation::Tables { distances: Some(distances), .. } => interpolate(distances, distance),
+            _ => distance,
+        }
+    }
+}
+
+/// Gets approximated durations and distances rounded to nearest integer, one pair of
+/// matrices per approximation.
+pub fn get_approx_transportation(
+    locations: &[Location],
+    approximations: &[Approximation],
+) -> Vec<(Vec<i64>, Vec<i64>)> {
+    assert!(!approximations.is_empty());
+    assert!(approximations.iter().all(|approximation| match approximation {
+        Approximation::Speed(speed) => *speed > 0.,
+        Approximation::Tables { .. } => true,
+    }));
 
     let distances = locations
         .iter()
@@ -18,11 +70,35 @@ pub fn get_approx_transportation(locations: &[Location], speeds: &[Float]) -> Ve
 
     let distances_rounded = distances.iter().map(|distance| distance.round() as i64).collect::<Vec<_>>();
 
-    parallel_collect(speeds, ParallelismPolicy::Default, |speed| {
-        let durations = distances.iter().map(|distance| (distance / speed).round() as i64).collect::<Vec<_>>();
+    parallel_collect(approximations, ParallelismPolicy::Default, |approximation| {
+        let durations =
+            distances.iter().map(|&distance| approximation.duration(distance).round() as i64).collect::<Vec<_>>();
 
-        (durations, distances_rounded.clone())
+        let road_distances = match approximation {
+            Approximation::Tables { distances: Some(_), .. } => {
+                distances.iter().map(|&distance| approximation.distance(distance).round() as i64).collect()
+            }
+            _ => distances_rounded.clone(),
+        };
+
+        (durations, road_distances)
     })
+}
+
+/// Reads a value off a table of `[x, y]` knots: along the straight line between the knots either
+/// side of `x`, from an implicit `[0, 0]`, and beyond the last knot along the last segment's slope.
+/// Knots are expected strictly increasing in `x`; an empty table gives `x` back.
+pub(crate) fn interpolate(knots: &[[Float; 2]], x: Float) -> Float {
+    let segment = match knots.partition_point(|knot| knot[0] < x) {
+        _ if knots.is_empty() => return x,
+        0 => ([0., 0.], knots[0]),
+        index if index < knots.len() => (knots[index - 1], knots[index]),
+        _ if knots.len() == 1 => ([0., 0.], knots[0]),
+        _ => (knots[knots.len() - 2], knots[knots.len() - 1]),
+    };
+    let ([x0, y0], [x1, y1]) = segment;
+
+    y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 }
 
 /// Gets distance between two points using haversine formula.
