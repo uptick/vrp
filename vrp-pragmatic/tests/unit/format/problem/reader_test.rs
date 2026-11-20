@@ -286,6 +286,42 @@ fn can_deserialize_minimal_problem_and_matrix() {
 }
 
 #[test]
+fn can_create_approximation_matrices_from_tables() {
+    let tables =
+        || MatrixApproximation { durations: vec![[1000., 120.], [2000., 180.]], distances: Some(vec![[1000., 1300.]]) };
+    let problem = Problem {
+        plan: Plan {
+            jobs: vec![
+                create_delivery_job("job1", (52.52599, 13.45413)),
+                create_delivery_job("job2", (52.5165, 13.3808)),
+            ],
+            ..create_empty_plan()
+        },
+        fleet: Fleet {
+            vehicles: vec![],
+            profiles: vec![
+                MatrixProfile { name: "car1".to_string(), speed: None, approximation: Some(tables()) },
+                MatrixProfile { name: "car2".to_string(), speed: Some(10.), approximation: None },
+                MatrixProfile { name: "car3".to_string(), speed: None, approximation: Some(tables()) },
+            ],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+
+    let matrices = create_approx_matrices(&problem);
+    assert_eq!(matrices.len(), 3);
+
+    // a 5078 meter straight line: 180 s + 3078 m at 60 s/km; 1.3 times as far by road
+    for &(profile, duration, distance) in &[("car1", 365, 6601), ("car2", 508, 5078), ("car3", 365, 6601)] {
+        let matrix = matrices.iter().find(|m| m.profile.as_ref().unwrap().as_str() == profile).unwrap();
+
+        assert_eq!(matrix.distances, &[0, distance, distance, 0], "{profile}");
+        assert_eq!(matrix.travel_times, &[0, duration, duration, 0], "{profile}");
+    }
+}
+
+#[test]
 fn can_create_approximation_matrices() {
     let problem = Problem {
         plan: Plan {
@@ -298,10 +334,10 @@ fn can_create_approximation_matrices() {
         fleet: Fleet {
             vehicles: vec![],
             profiles: vec![
-                MatrixProfile { name: "car1".to_string(), speed: Some(8.) },
-                MatrixProfile { name: "car2".to_string(), speed: Some(10.) },
-                MatrixProfile { name: "car3".to_string(), speed: Some(5.) },
-                MatrixProfile { name: "car4".to_string(), speed: None },
+                MatrixProfile { name: "car1".to_string(), speed: Some(8.), approximation: None },
+                MatrixProfile { name: "car2".to_string(), speed: Some(10.), approximation: None },
+                MatrixProfile { name: "car3".to_string(), speed: Some(5.), approximation: None },
+                MatrixProfile { name: "car4".to_string(), speed: None, approximation: None },
             ],
             ..create_default_fleet()
         },

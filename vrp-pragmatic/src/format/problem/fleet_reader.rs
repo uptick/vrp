@@ -5,7 +5,7 @@ mod fleet_reader_test;
 use super::*;
 use crate::Location as ApiLocation;
 use crate::format::UnknownLocationFallback;
-use crate::utils::get_approx_transportation;
+use crate::utils::{Approximation, get_approx_transportation};
 use std::collections::HashSet;
 use vrp_core::construction::enablers::{FirstJobArrivalFloorDimension, create_typed_actor_groups};
 use vrp_core::construction::features::{VehicleCapacityDimension, VehicleSkillsDimension};
@@ -221,31 +221,34 @@ pub fn create_approx_matrices(problem: &ApiProblem) -> Vec<Matrix> {
 }
 
 pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_index: &CoordIndex) -> Vec<Matrix> {
-    const DEFAULT_SPEED: Float = 10.;
-    // get each speed value once
-    let speeds = problem
-        .fleet
-        .profiles
-        .iter()
-        .map(|profile| profile.speed.unwrap_or(DEFAULT_SPEED))
-        .map(|speed| speed.to_bits())
-        .collect::<HashSet<_>>();
-    let speeds = speeds.into_iter().map(Float::from_bits).collect::<Vec<_>>();
+    let profile_approximations = problem.fleet.profiles.iter().map(get_profile_approximation).collect::<Vec<_>>();
+
+    // work each distinct approximation out once
+    let mut keys = Vec::<Vec<u64>>::new();
+    let mut approximations = Vec::<Approximation>::new();
+    profile_approximations.iter().for_each(|approximation| {
+        let key = approximation.key();
+        if !keys.contains(&key) {
+            keys.push(key);
+            approximations.push(approximation.clone());
+        }
+    });
 
     let locations = coord_index
         .unique()
         .into_iter()
         .filter(|location| !matches!(location, ApiLocation::Custom { .. }))
         .collect::<Vec<_>>();
-    let approx_data = get_approx_transportation(&locations, speeds.as_slice());
+    let approx_data = get_approx_transportation(&locations, approximations.as_slice());
 
     problem
         .fleet
         .profiles
         .iter()
-        .map(move |profile| {
-            let speed = profile.speed.unwrap_or(DEFAULT_SPEED);
-            let idx = speeds.iter().position(|&s| s == speed).expect("Cannot find profile speed");
+        .zip(profile_approximations.iter())
+        .map(move |(profile, approximation)| {
+            let key = approximation.key();
+            let idx = keys.iter().position(|k| *k == key).expect("Cannot find profile approximation");
 
             Matrix {
                 profile: Some(profile.name.clone()),
@@ -256,4 +259,17 @@ pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_inde
             }
         })
         .collect()
+}
+
+/// How a profile's travel is approximated: its tables when it has them, otherwise its speed.
+fn get_profile_approximation(profile: &MatrixProfile) -> Approximation {
+    const DEFAULT_SPEED: Float = 10.;
+
+    match &profile.approximation {
+        Some(approximation) => Approximation::Tables {
+            durations: approximation.durations.clone(),
+            distances: approximation.distances.clone(),
+        },
+        None => Approximation::Speed(profile.speed.unwrap_or(DEFAULT_SPEED)),
+    }
 }
