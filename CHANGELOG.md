@@ -60,6 +60,8 @@ are already published. So, I stick to it for now.
 * `maximize-value` within a `multi-objective` was not seen by validation, so jobs with a value failed with `E1607`
   missing value objective, and `E1603` did not catch it being redundant
 * `E1604` did not catch a redundant `tour-order` within a `multi-objective`
+* vicinity clustering used `threshold.distance` as the walking duration limit and `threshold.duration` as the walking
+  distance limit
 
 
 ## [1.25.0] 2024-11-10

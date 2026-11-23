@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "../../../tests/unit/format/problem/clustering_reader_test.rs"]
+mod clustering_reader_test;
+
 use super::*;
 use crate::format::problem::fleet_reader::get_profile_index_map;
 use std::cmp::Ordering;
@@ -13,8 +17,8 @@ pub(super) fn create_cluster_config(api_problem: &ApiProblem) -> Result<Option<C
             Clustering::Vicinity { profile, threshold, visiting, serving, filtering } => Ok(Some(ClusterConfig {
                 profile: get_profile(api_problem, profile)?,
                 threshold: ThresholdPolicy {
-                    moving_duration: threshold.distance,
-                    moving_distance: threshold.duration,
+                    moving_duration: threshold.duration,
+                    moving_distance: threshold.distance,
                     min_shared_time: threshold.min_shared_time,
                     smallest_time_window: threshold.smallest_time_window,
                     max_jobs_per_cluster: threshold.max_jobs_per_cluster,
