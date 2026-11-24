@@ -58,14 +58,15 @@ fn check_e1603_no_jobs_with_value_objective(
     ctx: &ValidationContext,
     objectives: &[&Objective],
 ) -> Result<(), FormatError> {
-    let has_value_objective = objectives.iter().any(|objective| matches!(objective, MaximizeValue { .. }));
+    let has_value_objective = has_value_objective(objectives);
     let has_no_jobs_with_value = !ctx.problem.plan.jobs.iter().filter_map(|job| job.value).any(|value| value > 0.);
 
     if has_value_objective && has_no_jobs_with_value {
         Err(FormatError::new(
             "E1603".to_string(),
             "redundant value objective".to_string(),
-            "specify at least one non-zero valued job or delete 'maximize-value' objective".to_string(),
+            "specify at least one non-zero valued job or delete 'maximize-value' and 'maximize-net-value' objectives"
+                .to_string(),
         ))
     } else {
         Ok(())
@@ -77,7 +78,7 @@ fn check_e1604_no_jobs_with_order_objective(
     ctx: &ValidationContext,
     objectives: &[&Objective],
 ) -> Result<(), FormatError> {
-    let has_order_objective = objectives.iter().any(|objective| matches!(objective, TourOrder));
+    let has_order_objective = get_objectives_flattened(objectives).any(|objective| matches!(objective, TourOrder));
     let has_no_jobs_with_order = !ctx
         .problem
         .plan
@@ -151,14 +152,15 @@ fn check_e1607_jobs_with_value_but_no_objective(
         return Ok(());
     }
 
-    let has_no_value_objective = !objectives.iter().any(|objective| matches!(objective, MaximizeValue { .. }));
+    let has_no_value_objective = !has_value_objective(objectives);
     let has_jobs_with_vlue = ctx.problem.plan.jobs.iter().filter_map(|job| job.value).any(|value| value > 0.);
 
     if has_no_value_objective && has_jobs_with_vlue {
         Err(FormatError::new(
             "E1607".to_string(),
             "missing value objective".to_string(),
-            "specify 'maximize-value' objective, remove objectives property or remove value property from jobs"
+            "specify 'maximize-value' or 'maximize-net-value' objective, remove objectives property or remove value \
+             property from jobs"
                 .to_string(),
         ))
     } else {
@@ -233,6 +235,36 @@ fn check_e1609_unguarded_due_date_objectives(objectives: &[&Objective]) -> Resul
     }
 }
 
+/// Checks that the travel penalty of `maximize-utilization` and `maximize-net-value` is not
+/// negative: a negative one would reward travel.
+fn check_e1610_negative_travel_penalty(objectives: &[&Objective]) -> Result<(), FormatError> {
+    let negative = get_objectives_flattened(objectives).find_map(|objective| {
+        let (name, travel_penalty) = match objective {
+            MaximizeUtilization { travel_penalty } => ("maximize-utilization", *travel_penalty),
+            MaximizeNetValue { travel_penalty } => ("maximize-net-value", *travel_penalty),
+            _ => return None,
+        };
+
+        (travel_penalty < 0.).then_some((name, travel_penalty))
+    });
+
+    match negative {
+        Some((name, travel_penalty)) => Err(FormatError::new(
+            "E1610".to_string(),
+            format!("negative travel penalty in '{name}' objective"),
+            format!("set 'travelPenalty' to zero or more, was specified: '{travel_penalty}'"),
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Checks whether an objective which reads job values is specified, on its own or within a multi
+/// objective.
+fn has_value_objective(objectives: &[&Objective]) -> bool {
+    get_objectives_flattened(objectives)
+        .any(|objective| matches!(objective, MaximizeValue { .. } | MaximizeNetValue { .. }))
+}
+
 fn get_objectives<'a>(ctx: &'a ValidationContext) -> Option<Vec<&'a Objective>> {
     ctx.problem.objectives.as_ref().map(|objectives| objectives.iter().collect())
 }
@@ -257,6 +289,7 @@ pub fn validate_objectives(ctx: &ValidationContext) -> Result<(), MultiFormatErr
             check_e1607_jobs_with_value_but_no_objective(ctx, &objectives),
             check_e1608_unguarded_prefer_early_tours(&objectives),
             check_e1609_unguarded_due_date_objectives(&objectives),
+            check_e1610_negative_travel_penalty(&objectives),
         ])
         .map_err(From::from)
     } else {

@@ -709,6 +709,38 @@ pub enum Objective {
         cap: Option<Float>,
     },
 
+    /// An objective to maximize net utilization: the time spent serving jobs, less `travelPenalty`
+    /// times the time spent travelling, summed over the tours in use and measured in seconds.
+    ///
+    /// Travel covers every leg, including those out of and back to the depot. Breaks, reloads and
+    /// recharges are not counted as time spent serving jobs.
+    ///
+    /// Ranked above `minimize-unassigned` or `maximize-value`, it prefers to drop a job whose service
+    /// time is less than `travelPenalty` times the travel it adds, although the search does not
+    /// always find a solution without it. Ranked below them, it mostly minimizes travel time.
+    #[serde(rename_all = "camelCase")]
+    MaximizeUtilization {
+        /// How many seconds of service time one second of travel is worth giving up, such as `0.25`.
+        /// Zero maximizes service time alone. Must not be negative.
+        travel_penalty: Float,
+    },
+
+    /// An objective to maximize net value: the `value` of served jobs, less `travelPenalty` times
+    /// the time spent travelling in seconds, summed over the tours in use.
+    ///
+    /// Travel is measured as for `maximize-utilization`. A job without a value counts as zero.
+    /// Unlike `maximize-value`, it does not give skipped breaks a value.
+    ///
+    /// Ranked above `minimize-unassigned` or `maximize-value`, it prefers to drop a job whose value
+    /// is less than `travelPenalty` times the travel it adds, although the search does not always
+    /// find a solution without it. Ranked below them, it mostly minimizes travel time.
+    #[serde(rename_all = "camelCase")]
+    MaximizeNetValue {
+        /// How much value one second of travel is worth giving up. It is in the units of job values,
+        /// so it has to be sized against them. Zero maximizes value alone. Must not be negative.
+        travel_penalty: Float,
+    },
+
     /// An objective to consider hierarchy of areas while serving jobs.
     HierarchicalAreas {
         /// Number of levels in area hierarchy.

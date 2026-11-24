@@ -74,6 +74,9 @@ pub use self::tour_order::*;
 mod transport;
 pub use self::transport::*;
 
+mod utilization;
+pub use self::utilization::*;
+
 mod work_balance;
 pub use self::work_balance::{
     create_activity_balanced_feature, create_distance_balanced_feature, create_duration_balanced_feature,

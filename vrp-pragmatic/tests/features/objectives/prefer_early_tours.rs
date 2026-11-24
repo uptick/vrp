@@ -85,6 +85,21 @@ fn can_prefer_earliest_shift_with_out_of_hours_depot_travel() {
     assert_eq!(vehicle_id, "early_1");
 }
 
+#[test]
+fn can_prefer_earliest_shift_in_weighted_sum() {
+    // neither objective has a constraint or state, which used to fail with an empty feature
+    let objectives = vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective {
+            strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+            objectives: vec![MinimizeTours, PreferEarlyTours],
+        },
+        MinimizeCost,
+    ];
+
+    assert_eq!(solve(Some(objectives), false), "early_1");
+}
+
 fn objectives() -> Option<Vec<Objective>> {
     Some(vec![MinimizeUnassigned { breaks: None }, MinimizeTours, PreferEarlyTours, MinimizeCost])
 }
