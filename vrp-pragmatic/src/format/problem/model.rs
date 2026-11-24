@@ -548,6 +548,31 @@ pub struct MatrixProfile {
     /// Default value is 10.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<Float>,
+
+    /// Approximates travel from the straight-line distance between two locations with tables,
+    /// instead of covering the straight line at `speed`. Used only when routing matrix is not
+    /// specified. Cannot be combined with `speed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approximation: Option<MatrixApproximation>,
+}
+
+/// Travel worked out from the straight-line (haversine) distance between two locations.
+///
+/// Each table is a list of `[straight-line meters, value]` points. The value is read off the
+/// straight line between neighbouring points, from an implicit `[0, 0]`, and beyond the last point
+/// along the slope of the last segment. Points must be positive and strictly increasing in both
+/// meters and value. A concave table (each segment no steeper than the one before) keeps the
+/// triangle inequality.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct MatrixApproximation {
+    /// Travel duration in seconds against straight-line meters.
+    pub durations: Vec<[Float; 2]>,
+
+    /// Road distance in meters against straight-line meters. When absent, the distance is the
+    /// straight line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distances: Option<Vec<[Float; 2]>>,
 }
 
 /// Specifies vehicle resource type.

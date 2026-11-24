@@ -33,7 +33,7 @@ fn can_get_solution_serialized() {
         plan: Plan { jobs: vec![create_test_job(1., 0.)], ..create_empty_plan() },
         fleet: Fleet {
             vehicles: vec![create_test_vehicle_type()],
-            profiles: vec![MatrixProfile { name: "car".to_string(), speed: None }],
+            profiles: vec![MatrixProfile { name: "car".to_string(), speed: None, approximation: None }],
             resources: None,
         },
         objectives: None,

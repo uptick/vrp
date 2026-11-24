@@ -6,8 +6,8 @@ fn can_detect_duplicates() {
     let problem = Problem {
         fleet: Fleet {
             profiles: vec![
-                MatrixProfile { name: "my_vehicle".to_string(), speed: None },
-                MatrixProfile { name: "my_vehicle".to_string(), speed: None },
+                MatrixProfile { name: "my_vehicle".to_string(), speed: None, approximation: None },
+                MatrixProfile { name: "my_vehicle".to_string(), speed: None, approximation: None },
             ],
             ..create_default_fleet()
         },
@@ -102,7 +102,7 @@ fn can_detect_missing_profile() {
                 VehicleType { profile: create_vehicle_profile_with_name("car"), ..create_default_vehicle_type() },
                 VehicleType { profile: create_vehicle_profile_with_name("truck"), ..create_default_vehicle_type() },
             ],
-            profiles: vec![MatrixProfile { name: "car".to_string(), speed: None }],
+            profiles: vec![MatrixProfile { name: "car".to_string(), speed: None, approximation: None }],
             ..create_default_fleet()
         },
         ..create_empty_problem()
@@ -113,4 +113,39 @@ fn can_detect_missing_profile() {
     let result = check_e1505_profiles_exist(&ctx);
 
     assert_eq!(result.err().map(|err| err.code), Some("E1505".to_string()));
+}
+
+#[test]
+fn can_detect_invalid_approximation_tables() {
+    let valid = || vec![[1000., 120.], [2000., 180.]];
+    let approximation = |durations, distances| Some(MatrixApproximation { durations, distances });
+
+    vec![
+        (None, approximation(valid(), None), None),
+        (None, approximation(valid(), Some(vec![[1000., 1300.]])), None),
+        (Some(10.), approximation(valid(), None), Some("E1506")),
+        (None, approximation(vec![], None), Some("E1506")),
+        (None, approximation(vec![[0., 0.]], None), Some("E1506")),
+        (None, approximation(vec![[2000., 120.], [1000., 180.]], None), Some("E1506")),
+        (None, approximation(vec![[1000., 180.], [2000., 120.]], None), Some("E1506")),
+        (None, approximation(vec![[1000., Float::NAN]], None), Some("E1506")),
+        (None, approximation(valid(), Some(vec![])), Some("E1506")),
+    ]
+    .into_iter()
+    .enumerate()
+    .for_each(|(case, (speed, approximation, expected))| {
+        let problem = Problem {
+            fleet: Fleet {
+                profiles: vec![MatrixProfile { name: "car".to_string(), speed, approximation }],
+                ..create_default_fleet()
+            },
+            ..create_empty_problem()
+        };
+        let coord_index = CoordIndex::new(&problem);
+        let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+        let result = check_e1506_approximation_tables(&ctx);
+
+        assert_eq!(result.err().map(|err| err.code), expected.map(str::to_string), "case {case}");
+    });
 }
