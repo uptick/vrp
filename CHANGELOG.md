@@ -55,6 +55,11 @@ are already published. So, I stick to it for now.
   accepted now
 * swapped descriptions of `travelTimes` and `distances` in the routing matrix
 * objectives documentation listed several parameters which do not exist
+* a `multi-objective` whose members have no constraint or state of their own, such as `minimize-tours` and
+  `prefer-early-tours`, failed with `empty feature is not allowed`
+* `maximize-value` within a `multi-objective` was not seen by validation, so jobs with a value failed with `E1607`
+  missing value objective, and `E1603` did not catch it being redundant
+* `E1604` did not catch a redundant `tour-order` within a `multi-objective`
 
 
 ## [1.25.0] 2024-11-10

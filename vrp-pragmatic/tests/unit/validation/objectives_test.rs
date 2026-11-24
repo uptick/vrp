@@ -85,12 +85,8 @@ fn can_detect_missing_cost_objective_impl(objectives: Option<Vec<Objective>>, ex
     assert_eq!(result.err().map(|err| err.code), expected.map(|_| "E1602".to_string()));
 }
 
-#[test]
-fn can_detect_missing_value_jobs() {
-    let problem = Problem {
-        objectives: Some(vec![MinimizeUnassigned { breaks: None }, MaximizeValue { breaks: None }, MinimizeCost]),
-        ..create_empty_problem()
-    };
+parameterized_test! {can_detect_missing_value_jobs, objectives, {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
     let coord_index = CoordIndex::new(&problem);
     let ctx = ValidationContext::new(&problem, None, &coord_index);
     let objectives = get_objectives(&ctx).unwrap();
@@ -98,14 +94,22 @@ fn can_detect_missing_value_jobs() {
     let result = check_e1603_no_jobs_with_value_objective(&ctx, &objectives);
 
     assert_eq!(result.err().unwrap().code, "E1603".to_string());
+}}
+
+can_detect_missing_value_jobs! {
+    case01_top_level: vec![MinimizeUnassigned { breaks: None }, MaximizeValue { breaks: None }, MinimizeCost],
+    case02_in_multi_objective: vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective {
+            strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+            objectives: vec![MaximizeValue { breaks: None }, MinimizeTours],
+        },
+        MinimizeCost,
+    ],
 }
 
-#[test]
-fn can_detect_missing_order_jobs() {
-    let problem = Problem {
-        objectives: Some(vec![MinimizeUnassigned { breaks: None }, TourOrder, MinimizeCost]),
-        ..create_empty_problem()
-    };
+parameterized_test! {can_detect_missing_order_jobs, objectives, {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
     let coord_index = CoordIndex::new(&problem);
     let ctx = ValidationContext::new(&problem, None, &coord_index);
     let objectives = get_objectives(&ctx).unwrap();
@@ -113,6 +117,15 @@ fn can_detect_missing_order_jobs() {
     let result = check_e1604_no_jobs_with_order_objective(&ctx, &objectives);
 
     assert_eq!(result.err().unwrap().code, "E1604".to_string());
+}}
+
+can_detect_missing_order_jobs! {
+    case01_top_level: vec![MinimizeUnassigned { breaks: None }, TourOrder, MinimizeCost],
+    case02_in_multi_objective: vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective { strategy: MultiStrategy::Sum, objectives: vec![TourOrder, MinimizeTours] },
+        MinimizeCost,
+    ],
 }
 
 parameterized_test! {can_detect_invalid_value_or_order, (value, order, expected), {
@@ -184,6 +197,14 @@ can_detect_missing_value_objective! {
                 MinimizeCost,
             ]), None),
     case03: (None, None),
+    case04_in_multi_objective: (Some(vec![
+                MinimizeUnassigned { breaks: None },
+                MultiObjective {
+                    strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+                    objectives: vec![MaximizeValue { breaks: None }, MinimizeTours],
+                },
+                MinimizeCost,
+            ]), None),
 }
 
 fn can_detect_missing_value_objective_impl(objectives: Option<Vec<Objective>>, expected: Option<String>) {

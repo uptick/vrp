@@ -58,7 +58,7 @@ fn check_e1603_no_jobs_with_value_objective(
     ctx: &ValidationContext,
     objectives: &[&Objective],
 ) -> Result<(), FormatError> {
-    let has_value_objective = objectives.iter().any(|objective| matches!(objective, MaximizeValue { .. }));
+    let has_value_objective = has_value_objective(objectives);
     let has_no_jobs_with_value = !ctx.problem.plan.jobs.iter().filter_map(|job| job.value).any(|value| value > 0.);
 
     if has_value_objective && has_no_jobs_with_value {
@@ -77,7 +77,7 @@ fn check_e1604_no_jobs_with_order_objective(
     ctx: &ValidationContext,
     objectives: &[&Objective],
 ) -> Result<(), FormatError> {
-    let has_order_objective = objectives.iter().any(|objective| matches!(objective, TourOrder));
+    let has_order_objective = get_objectives_flattened(objectives).any(|objective| matches!(objective, TourOrder));
     let has_no_jobs_with_order = !ctx
         .problem
         .plan
@@ -151,7 +151,7 @@ fn check_e1607_jobs_with_value_but_no_objective(
         return Ok(());
     }
 
-    let has_no_value_objective = !objectives.iter().any(|objective| matches!(objective, MaximizeValue { .. }));
+    let has_no_value_objective = !has_value_objective(objectives);
     let has_jobs_with_vlue = ctx.problem.plan.jobs.iter().filter_map(|job| job.value).any(|value| value > 0.);
 
     if has_no_value_objective && has_jobs_with_vlue {
@@ -231,6 +231,11 @@ fn check_e1609_unguarded_due_date_objectives(objectives: &[&Objective]) -> Resul
                 .to_string(),
         ))
     }
+}
+
+/// Checks whether `maximize-value` is specified, on its own or within a multi objective.
+fn has_value_objective(objectives: &[&Objective]) -> bool {
+    get_objectives_flattened(objectives).any(|objective| matches!(objective, MaximizeValue { .. }))
 }
 
 fn get_objectives<'a>(ctx: &'a ValidationContext) -> Option<Vec<&'a Objective>> {

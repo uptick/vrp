@@ -308,13 +308,17 @@ fn get_features_with_goal(feature_layers: &[FeatureLayer]) -> GenericResult<(Vec
                     })
                     .collect::<GenericResult<Vec<_>>>()?;
 
-                all_features.push(
-                    FeatureCombinator::default()
-                        .add_features(features)
-                        // objectives will be combined below using [eval_multi_objective_strategy] function
-                        .set_objective_combinator(|_| Ok(None))
-                        .combine()?,
-                );
+                // without its objectives, a combination of objective-only features would be empty,
+                // which is not allowed, and it would have nothing to contribute anyway
+                if features.iter().any(|feature| feature.constraint.is_some() || feature.state.is_some()) {
+                    all_features.push(
+                        FeatureCombinator::default()
+                            .add_features(features)
+                            // objectives will be combined below using [eval_multi_objective_strategy] function
+                            .set_objective_combinator(|_| Ok(None))
+                            .combine()?,
+                    );
+                }
 
                 (all_features, eval_multi_objective_strategy(&objectives, composition_type, builder)?)
             }
