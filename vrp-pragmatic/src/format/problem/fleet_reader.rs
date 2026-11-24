@@ -4,7 +4,7 @@ mod fleet_reader_test;
 
 use super::*;
 use crate::Location as ApiLocation;
-use crate::format::UnknownLocationFallback;
+use crate::format::{UnknownLocationFallback, create_profile_adjustments};
 use crate::utils::{Approximation, get_approx_transportation};
 use std::collections::HashSet;
 use vrp_core::construction::enablers::{FirstJobArrivalFloorDimension, create_typed_actor_groups};
@@ -81,6 +81,16 @@ pub(super) fn create_transport_costs(
             Ok(MatrixData::new(profile, timestamp.map(|t| parse_time(&t)), durations, distances))
         })
         .collect::<Result<Vec<_>, GenericError>>()?;
+
+    // Adjust each profile's legs after its travel is known, whether supplied or approximated.
+    let adjustments = create_profile_adjustments(api_problem, coord_index.as_ref(), &matrix_profiles);
+    let mut matrix_data = matrix_data;
+    matrix_data.iter_mut().for_each(|data| {
+        if let Some(Some(profile_adjustments)) = adjustments.get(data.index) {
+            let size = (data.durations.len() as Float).sqrt().round() as usize;
+            profile_adjustments.apply_to_matrix(&mut data.durations, size);
+        }
+    });
 
     let matrix_indices = matrix_data.iter().map(|data| data.index).collect::<HashSet<_>>().len();
     if matrix_profiles.len() != matrix_indices {

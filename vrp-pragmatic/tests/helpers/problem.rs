@@ -267,7 +267,13 @@ pub fn create_default_fleet() -> Fleet {
 }
 
 pub fn create_default_matrix_profiles() -> Vec<MatrixProfile> {
-    vec![MatrixProfile { name: "car".to_string(), speed: None, approximation: None, unknown_location_travel: None }]
+    vec![MatrixProfile {
+        name: "car".to_string(),
+        speed: None,
+        approximation: None,
+        unknown_location_travel: None,
+        adjustments: None,
+    }]
 }
 
 pub fn create_min_jobs_cost_objective() -> Option<Vec<Objective>> {

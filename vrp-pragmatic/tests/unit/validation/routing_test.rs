@@ -1,4 +1,5 @@
 use super::*;
+use crate::format::CustomLocationType;
 use crate::helpers::*;
 
 #[test]
@@ -11,12 +12,14 @@ fn can_detect_duplicates() {
                     speed: None,
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "my_vehicle".to_string(),
                     speed: None,
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
             ],
             ..create_default_fleet()
@@ -117,6 +120,7 @@ fn can_detect_missing_profile() {
                 speed: None,
                 approximation: None,
                 unknown_location_travel: None,
+                adjustments: None,
             }],
             ..create_default_fleet()
         },
@@ -156,6 +160,7 @@ fn can_detect_invalid_approximation_tables() {
                     speed,
                     approximation,
                     unknown_location_travel: None,
+                    adjustments: None,
                 }],
                 ..create_default_fleet()
             },
@@ -198,6 +203,7 @@ fn can_detect_invalid_profile_travel_impl(
                 speed,
                 approximation: None,
                 unknown_location_travel,
+                adjustments: None,
             }],
             ..create_default_fleet()
         },
@@ -207,6 +213,79 @@ fn can_detect_invalid_profile_travel_impl(
     let ctx = ValidationContext::new(&problem, None, &coord_index);
 
     let result = check_e1507_invalid_profile_travel(&ctx);
+
+    assert_eq!(result.err().map(|err| err.code), expected.map(|code| code.to_string()));
+}
+
+fn create_problem_with_adjustments(adjustments: TravelAdjustments) -> Problem {
+    Problem {
+        plan: Plan { jobs: vec![create_delivery_job("job1", (1., 0.))], ..create_empty_plan() },
+        fleet: Fleet {
+            vehicles: vec![],
+            profiles: vec![MatrixProfile {
+                name: "car".to_string(),
+                speed: None,
+                approximation: None,
+                unknown_location_travel: None,
+                adjustments: Some(adjustments),
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    }
+}
+
+fn job_arrival(buffer: Option<f64>, round_up_to: Option<f64>) -> ArrivalAdjustment {
+    ArrivalAdjustment { location: Location::Coordinate { lat: 1., lng: 0. }, buffer, round_up_to }
+}
+
+parameterized_test! {can_detect_invalid_travel_adjustments, (minimum, arrival, expected), {
+    can_detect_invalid_travel_adjustments_impl(minimum, arrival, expected);
+}}
+
+can_detect_invalid_travel_adjustments! {
+    case01_minimum_only: (Some(300.), None, None),
+    case02_buffer: (None, Some(job_arrival(Some(60.), None)), None),
+    case03_round_up: (None, Some(job_arrival(None, Some(600.))), None),
+    case04_zero_minimum_and_buffer: (Some(0.), Some(job_arrival(Some(0.), None)), None),
+    case05_negative_minimum: (Some(-1.), None, Some("E1508")),
+    case06_both_buffer_and_round_up: (None, Some(job_arrival(Some(60.), Some(600.))), Some("E1508")),
+    case07_neither_buffer_nor_round_up: (None, Some(job_arrival(None, None)), Some("E1508")),
+    case08_negative_buffer: (None, Some(job_arrival(Some(-60.), None)), Some("E1508")),
+    case09_zero_round_up: (None, Some(job_arrival(None, Some(0.))), Some("E1508")),
+}
+
+fn can_detect_invalid_travel_adjustments_impl(
+    minimum: Option<f64>,
+    arrival: Option<ArrivalAdjustment>,
+    expected: Option<&str>,
+) {
+    let problem = create_problem_with_adjustments(TravelAdjustments { minimum, arrivals: arrival.map(|a| vec![a]) });
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+    let result = check_e1508_invalid_travel_adjustments(&ctx);
+
+    assert_eq!(result.err().map(|err| err.code), expected.map(|code| code.to_string()));
+}
+
+parameterized_test! {can_detect_unknown_arrival_location, (location, expected), {
+    can_detect_unknown_arrival_location_impl(location, expected);
+}}
+
+can_detect_unknown_arrival_location! {
+    case01_job_location: (Location::Coordinate { lat: 1., lng: 0. }, None),
+    case02_not_in_problem: (Location::Coordinate { lat: 9., lng: 9. }, Some("E1509")),
+    case03_unknown_location: (Location::Custom { r#type: CustomLocationType::Unknown }, Some("E1509")),
+}
+
+fn can_detect_unknown_arrival_location_impl(location: Location, expected: Option<&str>) {
+    let arrival = ArrivalAdjustment { location, buffer: Some(60.), round_up_to: None };
+    let problem = create_problem_with_adjustments(TravelAdjustments { minimum: None, arrivals: Some(vec![arrival]) });
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+    let result = check_e1509_unknown_arrival_location(&ctx);
 
     assert_eq!(result.err().map(|err| err.code), expected.map(|code| code.to_string()));
 }

@@ -306,18 +306,21 @@ fn can_create_approximation_matrices_from_tables() {
                     speed: None,
                     approximation: Some(tables()),
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "car2".to_string(),
                     speed: Some(10.),
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "car3".to_string(),
                     speed: None,
                     approximation: Some(tables()),
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
             ],
             ..create_default_fleet()
@@ -355,24 +358,28 @@ fn can_create_approximation_matrices() {
                     speed: Some(8.),
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "car2".to_string(),
                     speed: Some(10.),
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "car3".to_string(),
                     speed: Some(5.),
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
                 MatrixProfile {
                     name: "car4".to_string(),
                     speed: None,
                     approximation: None,
                     unknown_location_travel: None,
+                    adjustments: None,
                 },
             ],
             ..create_default_fleet()
@@ -415,4 +422,36 @@ fn can_read_unknown_location_travel_from_json() {
     let travel = walk.unknown_location_travel.as_ref().map(|travel| (travel.duration, travel.distance));
     assert_eq!(travel, Some((86400., 1000000.)));
     assert!(problem.fleet.profiles[0].unknown_location_travel.is_none());
+}
+
+#[test]
+fn can_read_travel_adjustments_from_json() {
+    let problem = deserialize_problem(BufReader::new(
+        r#"{
+          "plan": { "jobs": [] },
+          "fleet": {
+            "vehicles": [],
+            "profiles": [{
+              "name": "car",
+              "adjustments": {
+                "minimum": 300,
+                "arrivals": [
+                  { "location": { "lat": -37.8136, "lng": 144.9631 }, "buffer": 300 },
+                  { "location": { "index": 4 }, "roundUpTo": 600 }
+                ]
+              }
+            }]
+          }
+        }"#
+        .as_bytes(),
+    ))
+    .unwrap();
+
+    let adjustments = problem.fleet.profiles[0].adjustments.as_ref().unwrap();
+    assert_eq!(adjustments.minimum, Some(300.));
+    let arrivals = adjustments.arrivals.as_ref().unwrap();
+    assert!(matches!(arrivals[0].location, crate::format::Location::Coordinate { .. }));
+    assert_eq!((arrivals[0].buffer, arrivals[0].round_up_to), (Some(300.), None));
+    assert!(matches!(arrivals[1].location, crate::format::Location::Reference { index: 4 }));
+    assert_eq!((arrivals[1].buffer, arrivals[1].round_up_to), (None, Some(600.)));
 }
