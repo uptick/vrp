@@ -53,7 +53,7 @@ are already published. So, I stick to it for now.
 * add a javascript/node example
 * add `E0005`, `E1305` and `E1309` errors
 * add an optional `approximation` to a routing profile: travel worked out from the straight-line distance with
-  tables of `[straight-line meters, seconds]` and, optionally, `[straight-line meters, road meters]` knots,
+  tables of `[straight-line meters, seconds]` and, optionally, `[straight-line meters, road meters]` points,
   instead of covering the straight line at one `speed`. Validated by the new `E1506` error
 
 ### Fixed

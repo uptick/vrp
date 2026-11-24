@@ -11,7 +11,7 @@ use vrp_core::utils::{Float, ParallelismPolicy, parallel_collect};
 pub enum Approximation {
     /// The straight line covered at a speed (meters per second).
     Speed(Float),
-    /// Tables of `[straight-line meters, value]` knots, read as `interpolate` does.
+    /// Tables of `[straight-line meters, value]` points, read as `interpolate` does.
     Tables {
         /// Duration in seconds.
         durations: Vec<[Float; 2]>,
@@ -29,7 +29,7 @@ impl Approximation {
                 let mut key = vec![1];
                 std::iter::once(durations).chain(distances).for_each(|table| {
                     key.push(table.len() as u64);
-                    key.extend(table.iter().flat_map(|knot| knot.map(Float::to_bits)));
+                    key.extend(table.iter().flat_map(|point| point.map(Float::to_bits)));
                 });
                 key
             }
@@ -85,16 +85,16 @@ pub fn get_approx_transportation(
     })
 }
 
-/// Reads a value off a table of `[x, y]` knots: along the straight line between the knots either
-/// side of `x`, from an implicit `[0, 0]`, and beyond the last knot along the last segment's slope.
-/// Knots are expected strictly increasing in `x`; an empty table gives `x` back.
-pub(crate) fn interpolate(knots: &[[Float; 2]], x: Float) -> Float {
-    let segment = match knots.partition_point(|knot| knot[0] < x) {
-        _ if knots.is_empty() => return x,
-        0 => ([0., 0.], knots[0]),
-        index if index < knots.len() => (knots[index - 1], knots[index]),
-        _ if knots.len() == 1 => ([0., 0.], knots[0]),
-        _ => (knots[knots.len() - 2], knots[knots.len() - 1]),
+/// Reads a value off a table of `[x, y]` points: along the straight line between the points either
+/// side of `x`, from an implicit `[0, 0]`, and beyond the last point along the last segment's slope.
+/// Points are expected strictly increasing in `x`; an empty table gives `x` back.
+pub(crate) fn interpolate(points: &[[Float; 2]], x: Float) -> Float {
+    let segment = match points.partition_point(|point| point[0] < x) {
+        _ if points.is_empty() => return x,
+        0 => ([0., 0.], points[0]),
+        index if index < points.len() => (points[index - 1], points[index]),
+        _ if points.len() == 1 => ([0., 0.], points[0]),
+        _ => (points[points.len() - 2], points[points.len() - 1]),
     };
     let ([x0, y0], [x1, y1]) = segment;
 

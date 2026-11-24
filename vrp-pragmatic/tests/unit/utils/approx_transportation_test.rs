@@ -46,15 +46,15 @@ fn can_use_approximated_with_matrix_costs() {
 }
 
 #[test]
-fn can_interpolate_tables_from_origin_and_beyond_last_knot() {
-    let knots = [[1000., 100.], [3000., 200.]];
+fn can_interpolate_tables_from_origin_and_beyond_last_point() {
+    let points = [[1000., 100.], [3000., 200.]];
 
     vec![(0., 0.), (500., 50.), (1000., 100.), (2000., 150.), (3000., 200.), (5000., 300.)].into_iter().for_each(
         |(x, expected)| {
-            assert_eq!(interpolate(&knots, x), expected, "at {x}");
+            assert_eq!(interpolate(&points, x), expected, "at {x}");
         },
     );
-    // one knot is a line from the origin, extended
+    // one point is a line from the origin, extended
     assert_eq!(interpolate(&[[1000., 100.]], 2500.), 250.);
 }
 
@@ -74,7 +74,7 @@ fn can_use_tables_for_durations_and_distances() {
     // 3048 and 2056 meters: on the second segment
     assert_eq!(durations[1], (120. + (straight(0, 1) - 1000.) * 60. / 1000.).round() as i64);
     assert_eq!(durations[5], (120. + (straight(1, 2) - 1000.) * 60. / 1000.).round() as i64);
-    // 5078 meters: beyond the only distance knot
+    // 5078 meters: beyond the only distance point
     assert_eq!(distances[2], (straight(0, 2) * 1333. / 1000.).round() as i64);
     assert_eq!(durations[0], 0);
     assert_eq!(distances[0], 0);

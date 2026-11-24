@@ -146,7 +146,7 @@ fn check_e1506_approximation_tables(ctx: &ValidationContext) -> Result<(), Forma
             "invalid approximation in matrix profile".to_string(),
             format!(
                 "for profiles '{}': remove speed when approximation is set, and give each table at least one \
-                 knot, with positive values strictly increasing in both straight-line meters and value",
+                 point, with positive values strictly increasing in both straight-line meters and value",
                 invalid_profiles.join(", ")
             ),
         ))

@@ -558,9 +558,9 @@ pub struct MatrixProfile {
 
 /// Travel worked out from the straight-line (haversine) distance between two locations.
 ///
-/// Each table is a list of `[straight-line meters, value]` knots. The value is read off the
-/// straight line between neighbouring knots, from an implicit `[0, 0]`, and beyond the last knot
-/// along the slope of the last segment. Knots must be positive and strictly increasing in both
+/// Each table is a list of `[straight-line meters, value]` points. The value is read off the
+/// straight line between neighbouring points, from an implicit `[0, 0]`, and beyond the last point
+/// along the slope of the last segment. Points must be positive and strictly increasing in both
 /// meters and value. A concave table (each segment no steeper than the one before) keeps the
 /// triangle inequality.
 #[derive(Clone, Deserialize, Debug, Serialize)]
