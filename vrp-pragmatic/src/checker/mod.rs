@@ -361,7 +361,16 @@ impl CheckerContext {
 
         if is_special_from_idx || is_special_to_idx {
             // TODO handle other types of custom locations
-            return Ok((0, 0));
+            // A leg with an unknown end takes the profile's unknown location travel, zero unless set.
+            let (duration, distance) = self
+                .problem
+                .fleet
+                .profiles
+                .get(profile.index)
+                .and_then(|matrix_profile| matrix_profile.unknown_location_travel.as_ref())
+                .map_or((0., 0.), |travel| (travel.duration, travel.distance));
+
+            return Ok((distance.round() as i64, (duration * profile.scale).round() as i64));
         }
 
         let matrix_size = get_matrix_size(matrices.as_slice());

@@ -8,7 +8,12 @@ fn can_generate_fleet_of_specific_size() {
         plan: create_empty_plan(),
         fleet: Fleet {
             vehicles: vec![create_test_vehicle_type()],
-            profiles: vec![MatrixProfile { name: "normal_car".to_string(), speed: None, approximation: None }],
+            profiles: vec![MatrixProfile {
+                name: "normal_car".to_string(),
+                speed: None,
+                approximation: None,
+                unknown_location_travel: None,
+            }],
             resources: None,
         },
         objectives: None,

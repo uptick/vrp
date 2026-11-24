@@ -88,10 +88,31 @@ pub(super) fn create_transport_costs(
     }
 
     if coord_index.has_custom() {
-        create_matrix_transport_cost_with_fallback(matrix_data, UnknownLocationFallback::new(coord_index))
+        let unknown_location_travel = get_profile_unknown_location_travel(api_problem, &matrix_profiles);
+        create_matrix_transport_cost_with_fallback(
+            matrix_data,
+            UnknownLocationFallback::with_unknown_location_travel(coord_index, unknown_location_travel),
+        )
     } else {
         create_matrix_transport_cost(matrix_data)
     }
+}
+
+/// The travel of a leg with an unknown end, as `(duration, distance)` by profile index.
+fn get_profile_unknown_location_travel(
+    api_problem: &ApiProblem,
+    profile_indices: &HashMap<String, usize>,
+) -> Vec<(Float, Float)> {
+    let mut unknown_location_travel = vec![(0., 0.); profile_indices.len()];
+    api_problem.fleet.profiles.iter().rev().for_each(|profile| {
+        if let (Some(&index), Some(travel)) =
+            (profile_indices.get(&profile.name), profile.unknown_location_travel.as_ref())
+        {
+            unknown_location_travel[index] = (travel.duration, travel.distance);
+        }
+    });
+
+    unknown_location_travel
 }
 
 pub(super) fn read_fleet(

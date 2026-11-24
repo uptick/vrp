@@ -540,6 +540,7 @@ pub struct VehicleProfile {
 /// Specifies routing matrix profile.
 #[derive(Clone, Deserialize, Debug, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
 pub struct MatrixProfile {
     /// Profile name.
     pub name: String,
@@ -554,6 +555,22 @@ pub struct MatrixProfile {
     /// specified. Cannot be combined with `speed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approximation: Option<MatrixApproximation>,
+
+    /// The travel of any leg to, from or between locations of the custom `unknown` type. Applies
+    /// whether the profile has a routing matrix or is approximated. Default is zero duration and
+    /// distance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unknown_location_travel: Option<UnknownLocationTravel>,
+}
+
+/// The travel of a leg to, from or between unknown locations.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct UnknownLocationTravel {
+    /// Duration, in seconds.
+    pub duration: Float,
+    /// Distance, in meters.
+    pub distance: Float,
 }
 
 /// Travel worked out from the straight-line (haversine) distance between two locations.
