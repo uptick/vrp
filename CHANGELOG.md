@@ -40,6 +40,11 @@ are already published. So, I stick to it for now.
 * add an optional `due` date on a job, read by the `minimize-late-jobs`, `minimize-tardiness` and `minimize-due-window-use`
   objectives (rank them in that order). A due date is soft: it never makes a job unassignable, and a job left
   unassigned is scored as served when the plan ends
+* add `maximize-utilization` objective which maximizes time spent serving jobs less `travelPenalty` times time spent
+  travelling, and `E1610` error for a negative `travelPenalty`
+* add `maximize-net-value` objective which maximizes the value of served jobs less `travelPenalty` times time spent
+  travelling. It satisfies `E1603` and `E1607` like `maximize-value`. Both it and `maximize-utilization` count walking
+  and parking at a vicinity cluster as travel
 * add json schemas for the problem, matrix, config, solution and error documents
 * ship generated `pydantic` models within the python wheel as `vrp_cli.models`
 * publish a linux `aarch64` wheel, so `pip install` works on 64-bit arm
@@ -55,6 +60,13 @@ are already published. So, I stick to it for now.
   accepted now
 * swapped descriptions of `travelTimes` and `distances` in the routing matrix
 * objectives documentation listed several parameters which do not exist
+* a `multi-objective` whose members have no constraint or state of their own, such as `minimize-tours` and
+  `prefer-early-tours`, failed with `empty feature is not allowed`
+* `maximize-value` within a `multi-objective` was not seen by validation, so jobs with a value failed with `E1607`
+  missing value objective, and `E1603` did not catch it being redundant
+* `E1604` did not catch a redundant `tour-order` within a `multi-objective`
+* vicinity clustering used `threshold.distance` as the walking duration limit and `threshold.duration` as the walking
+  distance limit
 
 
 ## [1.25.0] 2024-11-10

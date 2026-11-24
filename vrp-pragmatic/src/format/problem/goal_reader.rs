@@ -1,4 +1,9 @@
+#[cfg(test)]
+#[path = "../../../tests/unit/format/problem/goal_reader_test.rs"]
+mod goal_reader_test;
+
 use super::*;
+use crate::format::problem::clustering_reader::create_cluster_config;
 use std::cmp::Ordering;
 use std::ops::Mul;
 use vrp_core::algorithms::clustering::kmedoids::create_hierarchical_kmedoids;
@@ -93,10 +98,12 @@ fn get_objective_feature_layers(
     props: &ProblemProperties,
 ) -> GenericResult<Vec<FeatureLayer>> {
     let objectives = get_objectives(api_problem, props);
+    // part of a cluster's duration, which the travel penalised objectives count as travel
+    let cluster_parking = create_cluster_config(api_problem)?.map_or(0., |config| config.serving.get_parking());
 
     objectives
         .iter()
-        .map(|objective| get_objective_feature_layer(objective, blocks, props))
+        .map(|objective| get_objective_feature_layer(objective, blocks, props, cluster_parking))
         .collect::<GenericResult<_>>()
 }
 
@@ -104,6 +111,7 @@ fn get_objective_feature_layer(
     objective: &Objective,
     blocks: &ProblemBlocks,
     props: &ProblemProperties,
+    cluster_parking: Duration,
 ) -> GenericResult<FeatureLayer> {
     let feature = match objective {
         Objective::MinimizeCost => TransportFeatureBuilder::new("min_cost")
@@ -213,11 +221,30 @@ fn get_objective_feature_layer(
             Arc::new(|duration| duration), // linear penalty; see DepotPenaltyFn for the non-linear seam
             *cap,
         ),
+        Objective::MaximizeUtilization { travel_penalty } => create_maximize_utilization_feature(
+            "max_utilization",
+            *travel_penalty,
+            blocks.transport.clone(),
+            // tasks from the plan, not breaks, reloads or recharges
+            Arc::new(|single| {
+                single.dimens.get_job_type().is_some_and(|job_type| {
+                    matches!(job_type.as_str(), "pickup" | "delivery" | "service" | "replacement")
+                })
+            }),
+            cluster_parking,
+        ),
+        Objective::MaximizeNetValue { travel_penalty } => create_maximize_net_value_feature(
+            "max_net_value",
+            *travel_penalty,
+            blocks.transport.clone(),
+            Arc::new(get_job_value_with_clusters),
+            cluster_parking,
+        ),
         Objective::HierarchicalAreas { levels } => get_hierarchical_areas_feature(blocks, *levels),
         Objective::MultiObjective { objectives, strategy: composition_type } => {
             let features = objectives
                 .iter()
-                .map(|o| get_objective_feature_layer(o, blocks, props))
+                .map(|o| get_objective_feature_layer(o, blocks, props, cluster_parking))
                 .map(|layer| match layer {
                     Ok(FeatureLayer::Single(feature)) => Ok(feature),
                     Ok(FeatureLayer::Multi { .. }) => {
@@ -233,6 +260,18 @@ fn get_objective_feature_layer(
     }?;
 
     Ok(FeatureLayer::Single(feature))
+}
+
+/// Returns a job's value, or for a cluster of jobs the sum of their values. A cluster keeps only
+/// its first job's dimensions, and only `maximize-value` sums the values into them when jobs are
+/// merged, so a cluster's own value is only right when that objective is used too.
+fn get_job_value_with_clusters(job: &CoreJob) -> Float {
+    let value = |job: &CoreJob| job.dimens().get_job_value().copied().unwrap_or(0.);
+
+    match job.dimens().get_cluster_info() {
+        Some(clustered) => clustered.iter().map(|info| value(&info.job)).sum(),
+        None => value(job),
+    }
 }
 
 fn get_hierarchical_areas_feature(blocks: &ProblemBlocks, levels: usize) -> GenericResult<Feature> {
@@ -308,13 +347,17 @@ fn get_features_with_goal(feature_layers: &[FeatureLayer]) -> GenericResult<(Vec
                     })
                     .collect::<GenericResult<Vec<_>>>()?;
 
-                all_features.push(
-                    FeatureCombinator::default()
-                        .add_features(features)
-                        // objectives will be combined below using [eval_multi_objective_strategy] function
-                        .set_objective_combinator(|_| Ok(None))
-                        .combine()?,
-                );
+                // without its objectives, a combination of objective-only features would be empty,
+                // which is not allowed, and it would have nothing to contribute anyway
+                if features.iter().any(|feature| feature.constraint.is_some() || feature.state.is_some()) {
+                    all_features.push(
+                        FeatureCombinator::default()
+                            .add_features(features)
+                            // objectives will be combined below using [eval_multi_objective_strategy] function
+                            .set_objective_combinator(|_| Ok(None))
+                            .combine()?,
+                    );
+                }
 
                 (all_features, eval_multi_objective_strategy(&objectives, composition_type, builder)?)
             }

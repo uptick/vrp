@@ -85,12 +85,8 @@ fn can_detect_missing_cost_objective_impl(objectives: Option<Vec<Objective>>, ex
     assert_eq!(result.err().map(|err| err.code), expected.map(|_| "E1602".to_string()));
 }
 
-#[test]
-fn can_detect_missing_value_jobs() {
-    let problem = Problem {
-        objectives: Some(vec![MinimizeUnassigned { breaks: None }, MaximizeValue { breaks: None }, MinimizeCost]),
-        ..create_empty_problem()
-    };
+parameterized_test! {can_detect_missing_value_jobs, objectives, {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
     let coord_index = CoordIndex::new(&problem);
     let ctx = ValidationContext::new(&problem, None, &coord_index);
     let objectives = get_objectives(&ctx).unwrap();
@@ -98,14 +94,23 @@ fn can_detect_missing_value_jobs() {
     let result = check_e1603_no_jobs_with_value_objective(&ctx, &objectives);
 
     assert_eq!(result.err().unwrap().code, "E1603".to_string());
+}}
+
+can_detect_missing_value_jobs! {
+    case01_top_level: vec![MinimizeUnassigned { breaks: None }, MaximizeValue { breaks: None }, MinimizeCost],
+    case02_in_multi_objective: vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective {
+            strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+            objectives: vec![MaximizeValue { breaks: None }, MinimizeTours],
+        },
+        MinimizeCost,
+    ],
+    case03_net_value: vec![MinimizeUnassigned { breaks: None }, MaximizeNetValue { travel_penalty: 0.1 }, MinimizeCost],
 }
 
-#[test]
-fn can_detect_missing_order_jobs() {
-    let problem = Problem {
-        objectives: Some(vec![MinimizeUnassigned { breaks: None }, TourOrder, MinimizeCost]),
-        ..create_empty_problem()
-    };
+parameterized_test! {can_detect_missing_order_jobs, objectives, {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
     let coord_index = CoordIndex::new(&problem);
     let ctx = ValidationContext::new(&problem, None, &coord_index);
     let objectives = get_objectives(&ctx).unwrap();
@@ -113,6 +118,15 @@ fn can_detect_missing_order_jobs() {
     let result = check_e1604_no_jobs_with_order_objective(&ctx, &objectives);
 
     assert_eq!(result.err().unwrap().code, "E1604".to_string());
+}}
+
+can_detect_missing_order_jobs! {
+    case01_top_level: vec![MinimizeUnassigned { breaks: None }, TourOrder, MinimizeCost],
+    case02_in_multi_objective: vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective { strategy: MultiStrategy::Sum, objectives: vec![TourOrder, MinimizeTours] },
+        MinimizeCost,
+    ],
 }
 
 parameterized_test! {can_detect_invalid_value_or_order, (value, order, expected), {
@@ -184,6 +198,19 @@ can_detect_missing_value_objective! {
                 MinimizeCost,
             ]), None),
     case03: (None, None),
+    case04_in_multi_objective: (Some(vec![
+                MinimizeUnassigned { breaks: None },
+                MultiObjective {
+                    strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+                    objectives: vec![MaximizeValue { breaks: None }, MinimizeTours],
+                },
+                MinimizeCost,
+            ]), None),
+    case05_net_value: (Some(vec![
+                MinimizeUnassigned { breaks: None },
+                MaximizeNetValue { travel_penalty: 0.1 },
+                MinimizeCost,
+            ]), None),
 }
 
 fn can_detect_missing_value_objective_impl(objectives: Option<Vec<Objective>>, expected: Option<String>) {
@@ -284,4 +311,29 @@ can_detect_unguarded_due_date_objectives! {
         ],
         true),
     case07_objectives_absent: (vec![MinimizeUnassigned { breaks: None }, MinimizeCost], false),
+}
+
+parameterized_test! {can_detect_negative_travel_penalty, (objectives, expected), {
+    let problem = Problem { objectives: Some(objectives), ..create_empty_problem() };
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+    let result = check_e1610_negative_travel_penalty(&get_objectives(&ctx).unwrap());
+
+    assert_eq!(result.err().map(|err| err.code), expected.then(|| "E1610".to_string()));
+}}
+
+can_detect_negative_travel_penalty! {
+    case01_negative: (vec![MaximizeUtilization { travel_penalty: -0.25 }, MinimizeCost], true),
+    case02_zero: (vec![MaximizeUtilization { travel_penalty: 0. }, MinimizeCost], false),
+    case03_negative_in_multi_objective: (
+        vec![
+            MultiObjective {
+                strategy: MultiStrategy::Sum,
+                objectives: vec![MaximizeUtilization { travel_penalty: -1. }, MinimizeTours],
+            },
+            MinimizeCost,
+        ],
+        true),
+    case04_net_value_negative: (vec![MaximizeNetValue { travel_penalty: -0.1 }, MinimizeCost], true),
 }

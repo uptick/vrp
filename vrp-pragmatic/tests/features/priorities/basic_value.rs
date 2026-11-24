@@ -14,6 +14,14 @@ can_prefer_jobs_with_more_value! {
         MinimizeCost,
     ]),
     case02: None,
+    case03_in_multi_objective: Some(vec![
+        MinimizeUnassigned { breaks: None },
+        MultiObjective {
+            strategy: MultiStrategy::WeightedSum { weights: vec![1., 1.] },
+            objectives: vec![MaximizeValue { breaks: None }, MinimizeTours],
+        },
+        MinimizeCost,
+    ]),
 }
 
 fn can_prefer_jobs_with_more_value_impl(objectives: Option<Vec<Objective>>) {
