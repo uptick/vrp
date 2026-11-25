@@ -33,7 +33,12 @@ fn create_problem(profiles: &[&str]) -> Problem {
         fleet: Fleet {
             profiles: profiles
                 .iter()
-                .map(|p| MatrixProfile { name: p.to_string(), speed: None, approximation: None })
+                .map(|p| MatrixProfile {
+                    name: p.to_string(),
+                    speed: None,
+                    approximation: None,
+                    unknown_location_travel: None,
+                })
                 .collect(),
             ..create_default_fleet()
         },

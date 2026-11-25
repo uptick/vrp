@@ -55,6 +55,8 @@ are already published. So, I stick to it for now.
 * add an optional `approximation` to a routing profile: travel worked out from the straight-line distance with
   tables of `[straight-line meters, seconds]` and, optionally, `[straight-line meters, road meters]` points,
   instead of covering the straight line at one `speed`. Validated by the new `E1506` error
+* add `unknownLocationTravel` to a routing profile: the travel of a leg to, from or between unknown locations, which
+  was always zero. Adds the `E1507` error for a speed not above zero, or negative unknown location travel
 
 ### Fixed
 

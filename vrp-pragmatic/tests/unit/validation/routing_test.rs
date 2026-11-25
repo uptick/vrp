@@ -6,8 +6,18 @@ fn can_detect_duplicates() {
     let problem = Problem {
         fleet: Fleet {
             profiles: vec![
-                MatrixProfile { name: "my_vehicle".to_string(), speed: None, approximation: None },
-                MatrixProfile { name: "my_vehicle".to_string(), speed: None, approximation: None },
+                MatrixProfile {
+                    name: "my_vehicle".to_string(),
+                    speed: None,
+                    approximation: None,
+                    unknown_location_travel: None,
+                },
+                MatrixProfile {
+                    name: "my_vehicle".to_string(),
+                    speed: None,
+                    approximation: None,
+                    unknown_location_travel: None,
+                },
             ],
             ..create_default_fleet()
         },
@@ -102,7 +112,12 @@ fn can_detect_missing_profile() {
                 VehicleType { profile: create_vehicle_profile_with_name("car"), ..create_default_vehicle_type() },
                 VehicleType { profile: create_vehicle_profile_with_name("truck"), ..create_default_vehicle_type() },
             ],
-            profiles: vec![MatrixProfile { name: "car".to_string(), speed: None, approximation: None }],
+            profiles: vec![MatrixProfile {
+                name: "car".to_string(),
+                speed: None,
+                approximation: None,
+                unknown_location_travel: None,
+            }],
             ..create_default_fleet()
         },
         ..create_empty_problem()
@@ -136,7 +151,12 @@ fn can_detect_invalid_approximation_tables() {
     .for_each(|(case, (speed, approximation, expected))| {
         let problem = Problem {
             fleet: Fleet {
-                profiles: vec![MatrixProfile { name: "car".to_string(), speed, approximation }],
+                profiles: vec![MatrixProfile {
+                    name: "car".to_string(),
+                    speed,
+                    approximation,
+                    unknown_location_travel: None,
+                }],
                 ..create_default_fleet()
             },
             ..create_empty_problem()
@@ -148,4 +168,45 @@ fn can_detect_invalid_approximation_tables() {
 
         assert_eq!(result.err().map(|err| err.code), expected.map(str::to_string), "case {case}");
     });
+}
+
+parameterized_test! {can_detect_invalid_profile_travel, (speed, unknown_location_travel, expected), {
+    can_detect_invalid_profile_travel_impl(speed, unknown_location_travel, expected);
+}}
+
+can_detect_invalid_profile_travel! {
+    case01_defaults: (None, None, None),
+    case02_valid: (Some(1.4), Some((86400., 1000000.)), None),
+    case03_zero_unknown_location_travel: (None, Some((0., 0.)), None),
+    case04_zero_speed: (Some(0.), None, Some("E1507")),
+    case05_negative_speed: (Some(-1.), None, Some("E1507")),
+    case06_negative_unknown_location_duration: (None, Some((-1., 0.)), Some("E1507")),
+    case07_infinite_unknown_location_distance: (None, Some((0., f64::INFINITY)), Some("E1507")),
+}
+
+fn can_detect_invalid_profile_travel_impl(
+    speed: Option<f64>,
+    unknown_location_travel: Option<(f64, f64)>,
+    expected: Option<&str>,
+) {
+    let unknown_location_travel =
+        unknown_location_travel.map(|(duration, distance)| UnknownLocationTravel { duration, distance });
+    let problem = Problem {
+        fleet: Fleet {
+            profiles: vec![MatrixProfile {
+                name: "car".to_string(),
+                speed,
+                approximation: None,
+                unknown_location_travel,
+            }],
+            ..create_default_fleet()
+        },
+        ..create_empty_problem()
+    };
+    let coord_index = CoordIndex::new(&problem);
+    let ctx = ValidationContext::new(&problem, None, &coord_index);
+
+    let result = check_e1507_invalid_profile_travel(&ctx);
+
+    assert_eq!(result.err().map(|err| err.code), expected.map(|code| code.to_string()));
 }

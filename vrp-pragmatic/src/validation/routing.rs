@@ -153,6 +153,41 @@ fn check_e1506_approximation_tables(ctx: &ValidationContext) -> Result<(), Forma
     }
 }
 
+/// Checks that a profile's speed is a finite number above zero, and its unknown location travel
+/// a finite duration and distance of zero or more.
+fn check_e1507_invalid_profile_travel(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let is_positive = |value: Option<Float>| value.is_none_or(|value| value.is_finite() && value > 0.);
+    let is_non_negative = |value: Float| value.is_finite() && value >= 0.;
+
+    let invalid_profiles = ctx
+        .problem
+        .fleet
+        .profiles
+        .iter()
+        .filter(|profile| {
+            !is_positive(profile.speed)
+                || profile
+                    .unknown_location_travel
+                    .as_ref()
+                    .is_some_and(|travel| !is_non_negative(travel.duration) || !is_non_negative(travel.distance))
+        })
+        .map(|profile| profile.name.as_str())
+        .collect::<Vec<_>>();
+
+    if invalid_profiles.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1507".to_string(),
+            "invalid speed or unknown location travel in profile".to_string(),
+            format!(
+                "give profiles '{}' a speed above zero, and unknown location travel of zero or more",
+                invalid_profiles.join(", ")
+            ),
+        ))
+    }
+}
+
 /// Validates routing rules.
 pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     let location_types = (ctx.coord_index.has_coordinates(), ctx.coord_index.has_indices());
@@ -165,6 +200,7 @@ pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError>
         check_e1504_index_size_mismatch(ctx),
         check_e1505_profiles_exist(ctx),
         check_e1506_approximation_tables(ctx),
+        check_e1507_invalid_profile_travel(ctx),
     ])
     .map_err(From::from)
 }

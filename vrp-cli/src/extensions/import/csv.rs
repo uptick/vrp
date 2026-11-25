@@ -161,7 +161,7 @@ mod actual {
                 vehicles,
                 profiles: matrix_profile_names
                     .into_iter()
-                    .map(|name| MatrixProfile { name, speed: None, approximation: None })
+                    .map(|name| MatrixProfile { name, speed: None, approximation: None, unknown_location_travel: None })
                     .collect(),
                 resources: None,
             },
