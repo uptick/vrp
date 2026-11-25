@@ -57,6 +57,9 @@ are already published. So, I stick to it for now.
   instead of covering the straight line at one `speed`. Validated by the new `E1506` error
 * add `unknownLocationTravel` to a routing profile: the travel of a leg to, from or between unknown locations, which
   was always zero. Adds the `E1507` error for a speed not above zero, or negative unknown location travel
+* add travel adjustments to a routing profile, applied whether it has a routing matrix or is approximated: a `minimum`
+  leg duration, and `arrivals` rules which add a `buffer` to, or round up to a multiple (`roundUpTo`), every leg
+  arriving at a location. Adds the `E1508` and `E1509` errors
 
 ### Fixed
 

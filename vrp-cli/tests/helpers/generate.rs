@@ -52,7 +52,13 @@ pub fn create_test_vehicle_type() -> VehicleType {
 }
 
 pub fn create_test_vehicle_profile() -> MatrixProfile {
-    MatrixProfile { name: "car".to_string(), speed: None, approximation: None, unknown_location_travel: None }
+    MatrixProfile {
+        name: "car".to_string(),
+        speed: None,
+        approximation: None,
+        unknown_location_travel: None,
+        adjustments: None,
+    }
 }
 
 pub fn create_test_time_window() -> Vec<String> {

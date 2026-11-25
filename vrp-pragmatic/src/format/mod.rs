@@ -23,6 +23,9 @@ pub use self::dimensions::*;
 mod location_fallback;
 pub use self::location_fallback::*;
 
+mod travel_adjustments;
+pub(crate) use self::travel_adjustments::{ProfileAdjustments, create_profile_adjustments};
+
 pub mod problem;
 pub mod solution;
 

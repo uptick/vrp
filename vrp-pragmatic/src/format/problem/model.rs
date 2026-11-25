@@ -561,6 +561,11 @@ pub struct MatrixProfile {
     /// distance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unknown_location_travel: Option<UnknownLocationTravel>,
+
+    /// Adjustments to the duration of the profile's legs, applied whether the profile has a
+    /// routing matrix or is approximated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjustments: Option<TravelAdjustments>,
 }
 
 /// The travel of a leg to, from or between unknown locations.
@@ -571,6 +576,41 @@ pub struct UnknownLocationTravel {
     pub duration: Float,
     /// Distance, in meters.
     pub distance: Float,
+}
+
+/// Adjustments to the duration of a profile's legs between two different, known locations. A leg
+/// to or from an unknown location keeps its unknown location travel, and a location's leg to
+/// itself is never adjusted. Distances are never adjusted.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct TravelAdjustments {
+    /// The shortest duration of a leg, in seconds: a shorter leg takes this long. Applied first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum: Option<Float>,
+
+    /// Adjustments to the legs arriving at given locations, applied in the order given, after
+    /// `minimum`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arrivals: Option<Vec<ArrivalAdjustment>>,
+}
+
+/// An adjustment to every leg arriving at a location. Exactly one of `buffer` and `roundUpTo` is
+/// set.
+#[derive(Clone, Deserialize, Debug, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub struct ArrivalAdjustment {
+    /// The location, given as the problem's locations are: a coordinate or an index. It must be
+    /// a location used by a job or a vehicle, and not an unknown location.
+    pub location: Location,
+
+    /// Seconds added to every leg arriving at the location.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer: Option<Float>,
+
+    /// Rounds every leg arriving at the location up to the next multiple of this many seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_up_to: Option<Float>,
 }
 
 /// Travel worked out from the straight-line (haversine) distance between two locations.

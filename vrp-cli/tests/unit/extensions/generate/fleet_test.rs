@@ -13,6 +13,7 @@ fn can_generate_fleet_of_specific_size() {
                 speed: None,
                 approximation: None,
                 unknown_location_travel: None,
+                adjustments: None,
             }],
             resources: None,
         },

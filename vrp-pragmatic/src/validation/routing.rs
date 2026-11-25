@@ -3,6 +3,7 @@
 mod routing_test;
 
 use super::*;
+use crate::format::Location;
 use crate::utils::combine_error_results;
 use std::collections::HashSet;
 use vrp_core::prelude::Float;
@@ -188,6 +189,75 @@ fn check_e1507_invalid_profile_travel(ctx: &ValidationContext) -> Result<(), For
     }
 }
 
+/// Checks that a profile's travel adjustments can be used: a minimum and buffers of zero or more,
+/// steps above zero, and each arrival rule with exactly one of a buffer and a step.
+fn check_e1508_invalid_travel_adjustments(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let is_non_negative = |value: Option<Float>| value.is_none_or(|value| value.is_finite() && value >= 0.);
+    let is_positive = |value: Option<Float>| value.is_none_or(|value| value.is_finite() && value > 0.);
+
+    let invalid_profiles = ctx
+        .problem
+        .fleet
+        .profiles
+        .iter()
+        .filter(|profile| {
+            profile.adjustments.as_ref().is_some_and(|adjustments| {
+                !is_non_negative(adjustments.minimum)
+                    || adjustments.arrivals.iter().flatten().any(|arrival| {
+                        arrival.buffer.is_some() == arrival.round_up_to.is_some()
+                            || !is_non_negative(arrival.buffer)
+                            || !is_positive(arrival.round_up_to)
+                    })
+            })
+        })
+        .map(|profile| profile.name.as_str())
+        .collect::<Vec<_>>();
+
+    if invalid_profiles.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1508".to_string(),
+            "invalid travel adjustments in profile".to_string(),
+            format!(
+                "give profiles '{}' a minimum and buffers of zero or more, and each arrival rule exactly one of \
+                 a buffer or a roundUpTo above zero",
+                invalid_profiles.join(", ")
+            ),
+        ))
+    }
+}
+
+/// Checks that every arrival rule names a location used by a job or a vehicle, and not an unknown
+/// location, whose legs keep their unknown location travel.
+fn check_e1509_unknown_arrival_location(ctx: &ValidationContext) -> Result<(), FormatError> {
+    let unknown_locations = ctx
+        .problem
+        .fleet
+        .profiles
+        .iter()
+        .flat_map(|profile| profile.adjustments.iter().flat_map(|adjustments| adjustments.arrivals.iter().flatten()))
+        .filter(|arrival| {
+            matches!(arrival.location, Location::Custom { .. })
+                || ctx.coord_index.get_by_loc(&arrival.location).is_none()
+        })
+        .map(|arrival| format!("{:?}", arrival.location))
+        .collect::<Vec<_>>();
+
+    if unknown_locations.is_empty() {
+        Ok(())
+    } else {
+        Err(FormatError::new(
+            "E1509".to_string(),
+            "arrival rule location is not in the problem".to_string(),
+            format!(
+                "give arrival rules the location of a job or vehicle, as the problem gives it, not: {}",
+                unknown_locations.join(", ")
+            ),
+        ))
+    }
+}
+
 /// Validates routing rules.
 pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError> {
     let location_types = (ctx.coord_index.has_coordinates(), ctx.coord_index.has_indices());
@@ -201,6 +271,8 @@ pub fn validate_routing(ctx: &ValidationContext) -> Result<(), MultiFormatError>
         check_e1505_profiles_exist(ctx),
         check_e1506_approximation_tables(ctx),
         check_e1507_invalid_profile_travel(ctx),
+        check_e1508_invalid_travel_adjustments(ctx),
+        check_e1509_unknown_arrival_location(ctx),
     ])
     .map_err(From::from)
 }
