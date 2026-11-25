@@ -5,7 +5,7 @@ mod fleet_reader_test;
 use super::*;
 use crate::Location as ApiLocation;
 use crate::format::{UnknownLocationFallback, create_profile_adjustments};
-use crate::utils::{Approximation, get_approx_transportation};
+use crate::utils::{Approximation, get_approx_transportation, get_approx_travel};
 use std::collections::HashSet;
 use vrp_core::construction::enablers::{FirstJobArrivalFloorDimension, create_typed_actor_groups};
 use vrp_core::construction::features::{VehicleCapacityDimension, VehicleSkillsDimension};
@@ -21,11 +21,50 @@ pub(super) fn get_profile_index_map(api_problem: &ApiProblem) -> HashMap<String,
     })
 }
 
+/// Creates the routing costs from the supplied `matrices` or, when `approximate` is set, from
+/// travel approximated from the problem's coordinates.
 pub(super) fn create_transport_costs(
     api_problem: &ApiProblem,
     matrices: &[Matrix],
     coord_index: Arc<CoordIndex>,
+    approximate: bool,
 ) -> GenericResult<Arc<dyn TransportCost>> {
+    let matrix_profiles = get_profile_index_map(api_problem);
+    let mut matrix_data = if approximate {
+        create_approx_matrix_data(api_problem, coord_index.as_ref(), &matrix_profiles)
+    } else {
+        create_supplied_matrix_data(matrices, &matrix_profiles)?
+    };
+
+    // Adjust each profile's legs after its travel is known, whether supplied or approximated.
+    let adjustments = create_profile_adjustments(api_problem, coord_index.as_ref(), &matrix_profiles);
+    matrix_data.iter_mut().for_each(|data| {
+        if let Some(Some(profile_adjustments)) = adjustments.get(data.index) {
+            let size = (data.durations.len() as Float).sqrt().round() as usize;
+            profile_adjustments.apply_to_matrix(&mut data.durations, size);
+        }
+    });
+
+    let matrix_indices = matrix_data.iter().map(|data| data.index).collect::<HashSet<_>>().len();
+    if matrix_profiles.len() != matrix_indices {
+        return Err("amount of fleet profiles does not match matrix profiles".into());
+    }
+
+    if coord_index.has_custom() {
+        let unknown_location_travel = get_profile_unknown_location_travel(api_problem, &matrix_profiles);
+        create_matrix_transport_cost_with_fallback(
+            matrix_data,
+            UnknownLocationFallback::with_unknown_location_travel(coord_index, unknown_location_travel),
+        )
+    } else {
+        create_matrix_transport_cost(matrix_data)
+    }
+}
+
+fn create_supplied_matrix_data(
+    matrices: &[Matrix],
+    matrix_profiles: &HashMap<String, usize>,
+) -> GenericResult<Vec<MatrixData>> {
     if !matrices.iter().all(|m| m.profile.is_some()) && !matrices.iter().all(|m| m.profile.is_none()) {
         return Err("all matrices should have profile set or none of them".into());
     }
@@ -34,7 +73,6 @@ pub(super) fn create_transport_costs(
         return Err("when timestamp is set, all matrices should have profile set".into());
     }
 
-    let matrix_profiles = get_profile_index_map(api_problem);
     if matrix_profiles.len() > matrices.len() {
         return Err(format!(
             "not enough routing matrices specified for fleet profiles defined: \
@@ -45,7 +83,7 @@ pub(super) fn create_transport_costs(
         .into());
     }
 
-    let matrix_data = matrices
+    matrices
         .iter()
         .enumerate()
         .map(|(idx, matrix)| {
@@ -80,32 +118,7 @@ pub(super) fn create_transport_costs(
 
             Ok(MatrixData::new(profile, timestamp.map(|t| parse_time(&t)), durations, distances))
         })
-        .collect::<Result<Vec<_>, GenericError>>()?;
-
-    // Adjust each profile's legs after its travel is known, whether supplied or approximated.
-    let adjustments = create_profile_adjustments(api_problem, coord_index.as_ref(), &matrix_profiles);
-    let mut matrix_data = matrix_data;
-    matrix_data.iter_mut().for_each(|data| {
-        if let Some(Some(profile_adjustments)) = adjustments.get(data.index) {
-            let size = (data.durations.len() as Float).sqrt().round() as usize;
-            profile_adjustments.apply_to_matrix(&mut data.durations, size);
-        }
-    });
-
-    let matrix_indices = matrix_data.iter().map(|data| data.index).collect::<HashSet<_>>().len();
-    if matrix_profiles.len() != matrix_indices {
-        return Err("amount of fleet profiles does not match matrix profiles".into());
-    }
-
-    if coord_index.has_custom() {
-        let unknown_location_travel = get_profile_unknown_location_travel(api_problem, &matrix_profiles);
-        create_matrix_transport_cost_with_fallback(
-            matrix_data,
-            UnknownLocationFallback::with_unknown_location_travel(coord_index, unknown_location_travel),
-        )
-    } else {
-        create_matrix_transport_cost(matrix_data)
-    }
+        .collect::<Result<Vec<_>, GenericError>>()
 }
 
 /// The travel of a leg with an unknown end, as `(duration, distance)` by profile index.
@@ -253,24 +266,8 @@ pub fn create_approx_matrices(problem: &ApiProblem) -> Vec<Matrix> {
 
 pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_index: &CoordIndex) -> Vec<Matrix> {
     let profile_approximations = problem.fleet.profiles.iter().map(get_profile_approximation).collect::<Vec<_>>();
-
-    // work each distinct approximation out once
-    let mut keys = Vec::<Vec<u64>>::new();
-    let mut approximations = Vec::<Approximation>::new();
-    profile_approximations.iter().for_each(|approximation| {
-        let key = approximation.key();
-        if !keys.contains(&key) {
-            keys.push(key);
-            approximations.push(approximation.clone());
-        }
-    });
-
-    let locations = coord_index
-        .unique()
-        .into_iter()
-        .filter(|location| !matches!(location, ApiLocation::Custom { .. }))
-        .collect::<Vec<_>>();
-    let approx_data = get_approx_transportation(&locations, approximations.as_slice());
+    let (keys, approximations) = get_distinct_approximations(&profile_approximations);
+    let approx_data = get_approx_transportation(&get_approx_locations(coord_index), approximations.as_slice());
 
     problem
         .fleet
@@ -292,7 +289,73 @@ pub(super) fn create_approx_matrices_with_index(problem: &ApiProblem, coord_inde
         .collect()
 }
 
-/// How a profile's travel is approximated: its tables when it has them, otherwise its speed.
+/// Approximates each profile's travel straight into the routing costs' own form, with no integer
+/// matrices in between. A profile index takes the approximation of the first profile with its name,
+/// and profiles which share an approximation share one copy of its travel: the last of them takes it
+/// without a copy.
+fn create_approx_matrix_data(
+    problem: &ApiProblem,
+    coord_index: &CoordIndex,
+    profile_indices: &HashMap<String, usize>,
+) -> Vec<MatrixData> {
+    let mut approximation_by_index = vec![None; profile_indices.len()];
+    problem.fleet.profiles.iter().rev().for_each(|profile| {
+        if let Some(&index) = profile_indices.get(&profile.name) {
+            approximation_by_index[index] = Some(get_profile_approximation(profile));
+        }
+    });
+    let approximation_by_index = approximation_by_index.into_iter().flatten().collect::<Vec<_>>();
+
+    let (keys, approximations) = get_distinct_approximations(&approximation_by_index);
+    let position = |approximation: &Approximation| {
+        let key = approximation.key();
+        keys.iter().position(|known| *known == key).expect("known approximation")
+    };
+
+    let mut remaining_uses = vec![0_usize; approximations.len()];
+    approximation_by_index.iter().for_each(|approximation| remaining_uses[position(approximation)] += 1);
+
+    let mut travel = get_approx_travel(&get_approx_locations(coord_index), approximations.as_slice())
+        .into_iter()
+        .map(Some)
+        .collect::<Vec<_>>();
+
+    approximation_by_index
+        .iter()
+        .enumerate()
+        .map(|(index, approximation)| {
+            let position = position(approximation);
+            remaining_uses[position] -= 1;
+            let (durations, distances) =
+                if remaining_uses[position] == 0 { travel[position].take() } else { travel[position].clone() }
+                    .expect("approximated travel");
+
+            MatrixData::new(index, None, durations, distances)
+        })
+        .collect()
+}
+
+/// Each distinct approximation once, with the keys that tell them apart.
+fn get_distinct_approximations(approximations: &[Approximation]) -> (Vec<Vec<u64>>, Vec<Approximation>) {
+    let mut keys = Vec::<Vec<u64>>::new();
+    let mut distinct = Vec::<Approximation>::new();
+    approximations.iter().for_each(|approximation| {
+        let key = approximation.key();
+        if !keys.contains(&key) {
+            keys.push(key);
+            distinct.push(approximation.clone());
+        }
+    });
+
+    (keys, distinct)
+}
+
+/// The locations approximation works over: every location in the index except unknown ones, in
+/// index order.
+fn get_approx_locations(coord_index: &CoordIndex) -> Vec<ApiLocation> {
+    coord_index.unique().into_iter().filter(|location| !matches!(location, ApiLocation::Custom { .. })).collect()
+}
+
 fn get_profile_approximation(profile: &MatrixProfile) -> Approximation {
     const DEFAULT_SPEED: Float = 10.;
 

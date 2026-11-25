@@ -57,6 +57,20 @@ pub fn get_approx_transportation(
     locations: &[Location],
     approximations: &[Approximation],
 ) -> Vec<(Vec<i64>, Vec<i64>)> {
+    approximate(locations, approximations, |value| value as i64)
+}
+
+/// The same as [`get_approx_transportation`], with the rounded values held as floats, the way
+/// routing costs hold them, so they need no conversion and no second copy.
+pub fn get_approx_travel(locations: &[Location], approximations: &[Approximation]) -> Vec<(Vec<Float>, Vec<Float>)> {
+    approximate(locations, approximations, |value| value)
+}
+
+fn approximate<T: Send>(
+    locations: &[Location],
+    approximations: &[Approximation],
+    to_value: fn(Float) -> T,
+) -> Vec<(Vec<T>, Vec<T>)> {
     assert!(!approximations.is_empty());
     assert!(approximations.iter().all(|approximation| match approximation {
         Approximation::Speed(speed) => *speed > 0.,
@@ -68,18 +82,14 @@ pub fn get_approx_transportation(
         .flat_map(|l1| locations.iter().map(move |l2| get_haversine_distance(l1, l2)))
         .collect::<Vec<_>>();
 
-    let distances_rounded = distances.iter().map(|distance| distance.round() as i64).collect::<Vec<_>>();
-
     parallel_collect(approximations, ParallelismPolicy::Default, |approximation| {
         let durations =
-            distances.iter().map(|&distance| approximation.duration(distance).round() as i64).collect::<Vec<_>>();
+            distances.iter().map(|&distance| to_value(approximation.duration(distance).round())).collect::<Vec<_>>();
 
-        let road_distances = match approximation {
-            Approximation::Tables { distances: Some(_), .. } => {
-                distances.iter().map(|&distance| approximation.distance(distance).round() as i64).collect()
-            }
-            _ => distances_rounded.clone(),
-        };
+        // Each approximation rounds its own distances rather than cloning one shared rounded list,
+        // which would stay alive alongside the straight-line distances for no gain.
+        let road_distances =
+            distances.iter().map(|&distance| to_value(approximation.distance(distance).round())).collect();
 
         (durations, road_distances)
     })

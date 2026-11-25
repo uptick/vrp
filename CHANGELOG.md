@@ -11,6 +11,8 @@ are already published. So, I stick to it for now.
 ### Changed
 
 * migrate to rust 2024 edition
+* approximate travel straight into the routing costs, without integer matrices in between: reading a problem with 5,000
+  approximated locations and two profiles peaks at 44% less memory and takes about a quarter less time
 * improved remedian algorithm
 * separate calculations for distance/duration from cost minimization
 * change GSOM distance function
