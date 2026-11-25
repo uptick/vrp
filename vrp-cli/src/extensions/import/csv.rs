@@ -99,6 +99,7 @@ mod actual {
                 due: None,
                 group: None,
                 compatibility: None,
+                crew: None,
             })
             .collect();
 

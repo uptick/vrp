@@ -17,6 +17,10 @@ pub use self::capacity::{CapacityFeatureBuilder, JobDemandDimension, VehicleCapa
 mod compatibility;
 pub use self::compatibility::{JobCompatibilityDimension, create_compatibility_feature};
 
+mod crew;
+pub(crate) use self::crew::get_split_crew_jobs;
+pub use self::crew::{JobCrew, JobCrewDimension, create_crew_feature, get_crew_window};
+
 mod depot_proximity;
 pub use self::depot_proximity::*;
 

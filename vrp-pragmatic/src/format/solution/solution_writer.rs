@@ -413,7 +413,18 @@ fn create_unassigned(solution: &DomainSolution) -> Option<Vec<UnassignedJob>> {
 
             UnassignedJob { job_id, reasons }
         })
-        .collect::<Vec<_>>();
+        .fold(Vec::<UnassignedJob>::new(), |mut acc, job| {
+            // copies of a crew job are reported once, with reasons of all copies
+            match acc.iter_mut().find(|other| other.job_id == job.job_id) {
+                Some(other) => job.reasons.into_iter().for_each(|reason| {
+                    if !other.reasons.iter().any(|known| known.code == reason.code) {
+                        other.reasons.push(reason);
+                    }
+                }),
+                None => acc.push(job),
+            }
+            acc
+        });
 
     if unassigned.is_empty() { None } else { Some(unassigned) }
 }

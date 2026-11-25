@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vrp_core::{
     construction::features::{
-        BreakPolicy, JobCompatibilityDimension, JobDemandDimension, JobGroupDimension, JobSkills as FeatureJobSkills,
-        JobSkillsDimension,
+        BreakPolicy, JobCompatibilityDimension, JobCrew, JobCrewDimension, JobDemandDimension, JobGroupDimension,
+        JobSkills as FeatureJobSkills, JobSkillsDimension,
     },
     models::common::*,
     models::problem::{
@@ -163,9 +163,18 @@ fn read_required_jobs(
 
         assert!(!singles.is_empty());
 
+        let crew_size = job.crew.filter(|&crew| crew > 1);
+
         let problem_job = if singles.len() > 1 {
             let deliveries_start_index = job.pickups.as_ref().map_or(0, |p| p.len());
             get_multi_job(job, singles, deliveries_start_index, random)
+        } else if let Some(crew_size) = crew_size {
+            // a crew job is read as one copy per crew member, served by different vehicles together
+            let copies = get_crew_jobs(job, singles.into_iter().next().unwrap(), crew_size);
+            // NOTE the index keeps the first copy only: crew jobs cannot be referenced by relations
+            job_index.insert(job.id.clone(), copies[0].clone());
+            jobs.extend(copies);
+            return;
         } else {
             get_single_job(job, singles.into_iter().next().unwrap())
         };
@@ -443,6 +452,22 @@ fn get_single_job(job: &ApiJob, single: Single) -> Job {
     fill_dimens(job, &mut single.dimens);
 
     Job::Single(Arc::new(single))
+}
+
+fn get_crew_jobs(job: &ApiJob, single: Single, crew_size: usize) -> Vec<Job> {
+    (0..crew_size)
+        .map(|_| {
+            let mut copy = Single { places: single.places.clone(), dimens: single.dimens.clone() };
+            fill_dimens(job, &mut copy.dimens);
+            // the job's value is shared by the whole crew, so a crew job is not worth more than any other
+            if let Some(value) = job.value {
+                copy.dimens.set_job_value(value / crew_size as Float);
+            }
+            copy.dimens.set_job_crew(JobCrew { id: job.id.clone(), size: crew_size });
+
+            Job::Single(Arc::new(copy))
+        })
+        .collect()
 }
 
 fn get_multi_job(job: &ApiJob, singles: Vec<Single>, deliveries_start_index: usize, random: &Arc<dyn Random>) -> Job {

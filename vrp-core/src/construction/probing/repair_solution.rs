@@ -2,6 +2,7 @@
 #[path = "../../../tests/unit/construction/probing/repair_solution_test.rs"]
 mod repair_solution_test;
 
+use crate::construction::features::JobCrewDimension;
 use crate::construction::heuristics::*;
 use crate::models::GoalContext;
 use crate::models::common::TimeSpan;
@@ -120,6 +121,17 @@ fn synchronize_jobs(
                     result_selector: &result_selector,
                 };
                 let route_ctx = &new_insertion_ctx.solution.routes[route_idx];
+
+                // mixing solutions can put two copies of a crew job on one vehicle, so check route level
+                // constraints for them (kept to crew jobs so other problems repair exactly as before)
+                let route_violation = job.dimens().get_job_crew().is_some()
+                    && goal.evaluate(&MoveContext::route(&new_insertion_ctx.solution, route_ctx, &job)).is_some();
+                if route_violation {
+                    if job.as_multi().is_some() {
+                        invalid_multi_job_ids.insert(job.clone());
+                    }
+                    return (synchronized_jobs, invalid_multi_job_ids);
+                }
 
                 let insertion_result = eval_single_constraint_in_route(
                     new_insertion_ctx,

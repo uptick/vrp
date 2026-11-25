@@ -70,6 +70,7 @@ pub(crate) fn generate_plan(
                 due: job_proto.due.clone(),
                 group: job_proto.group.clone(),
                 compatibility: job_proto.compatibility.clone(),
+                crew: job_proto.crew,
             }
         })
         .collect();

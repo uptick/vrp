@@ -203,6 +203,7 @@ const GROUP_CONSTRAINT_CODE: ViolationCode = ViolationCode(12);
 const COMPATIBILITY_CONSTRAINT_CODE: ViolationCode = ViolationCode(13);
 const RELOAD_RESOURCE_CONSTRAINT_CODE: ViolationCode = ViolationCode(14);
 const RECHARGE_CONSTRAINT_CODE: ViolationCode = ViolationCode(15);
+const CREW_CONSTRAINT_CODE: ViolationCode = ViolationCode(16);
 
 /// An job id to job index.
 pub type JobIndex = HashMap<String, CoreJob>;

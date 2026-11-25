@@ -146,6 +146,7 @@ fn get_problem_properties(api_problem: &ApiProblem, matrices: &[Matrix]) -> Prob
         .any(|order| order > 0);
 
     let has_group = api_problem.plan.jobs.iter().any(|job| job.group.is_some());
+    let has_crew = api_problem.plan.jobs.iter().any(|job| job.crew.is_some_and(|crew| crew > 1));
     let has_value = api_problem.plan.jobs.iter().filter_map(|job| job.value).any(|value| value != 0.);
     let has_compatibility = api_problem.plan.jobs.iter().any(|job| job.compatibility.is_some());
     let has_tour_size_limits =
@@ -166,6 +167,7 @@ fn get_problem_properties(api_problem: &ApiProblem, matrices: &[Matrix]) -> Prob
         has_recharges,
         has_order,
         has_group,
+        has_crew,
         has_value,
         has_compatibility,
         has_tour_size_limits,

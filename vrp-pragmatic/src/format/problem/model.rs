@@ -133,6 +133,12 @@ pub struct Job {
     /// A compatibility group: jobs with different compatibility cannot be assigned to the same tour.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility: Option<String>,
+
+    /// A crew size: the amount of vehicles which serve the job together. Each of them starts the job at
+    /// the same time and stays for its full duration. Either the whole crew is assigned or none of it.
+    /// Supported only for a job with a single service task.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crew: Option<usize>,
 }
 
 // region Clustering
